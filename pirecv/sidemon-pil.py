@@ -21,7 +21,6 @@ F = {}
 for s in [9,10,11,12,13,14,15,16,18,20,22,24,26,28,30,32,36,40,44,48,52,60]:
     F["r"+str(s)] = ff("r", s); F["b"+str(s)] = ff("b", s)
 
-# ── Colors ──
 C = {
     "w": (238,240,246,255), "gr": (136,140,158,255), "dm": (90,94,114,255),
     "cpu": (62,216,122), "mem": (64,168,240), "disk": (240,150,40),
@@ -29,7 +28,6 @@ C = {
     "codex": (155,107,255), "gn": (62,216,122), "warn": (240,150,40), "dng": (240,84,68),
 }
 
-# Each page gets a DISTINCT background color
 THEMES = {
     "system":   {"bg": (8, 10, 18, 255),   "pn": (18, 20, 34, 255),
                  "cpu_bg": (12, 32, 20), "mem_bg": (12, 24, 42), "disk_bg": (40, 24, 8)},
@@ -43,7 +41,6 @@ THEMES = {
 
 state = {}; lock = threading.Lock()
 
-# ── Helpers ──
 def rrect(d, xy, r, fill):
     d.rounded_rectangle(xy, radius=r, fill=fill)
 
@@ -102,12 +99,14 @@ def pg_system(s):
         (s.get("disk", 0)/100, C["disk"], t["disk_bg"], f"{int(s.get('disk',0))}", "%"),
     ]
     for i, (pct, fg, bg, val, suf) in enumerate(rings):
-        x = cx[i]; arc(d, x, ry, ri, ro, min(pct, 1), fg, bg)
+        x = cx[i]
+        # Draw arc ring
+        arc(d, x, ry, ri, ro, min(pct, 1), fg, bg)
+        # Main number — centered in ring using anchor="mm"
+        d.text((x, ry-2), val, fill=C["w"], font=F["b36"], anchor="mm")
+        # Suffix "%" — small, placed to the right of the number, same baseline
         tw = d.textlength(val, font=F["b36"])
-        tw2 = d.textlength(suf, font=F["b18"])
-        total_w = tw + tw2 + 2
-        d.text((x-total_w/2, ry-6), val, fill=C["w"], font=F["b36"])
-        d.text((x-total_w/2+tw+2, ry+2), suf, fill=C["dm"], font=F["b18"])
+        d.text((x + tw//2 + 4, ry+4), suf, fill=C["dm"], font=F["b18"], anchor="lm")
 
     by = 200
     rrect(d, (12, by, W-12, by+60), 8, t["pn"])
@@ -135,25 +134,18 @@ def pg_ccswitch(cc):
     img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
     hdr(d, "CC SWITCH", "DeepSeek", t)
-
-    # Big balance — top center
     bal = f'{cc.get("balance", "?")}'
     cur = cc.get("currency", "CNY")
     d.text((W//2, 58), bal, fill=C["w"], font=F["b52"], anchor="ma")
     d.text((W//2, 112), f'{cur} remaining', fill=C["gr"], font=F["r16"], anchor="ma")
-
-    # Node info card
     n = str(cc.get("current_node", "?"))[:35]
     rrect(d, (40, 138, W-40, 198), 8, t["pn"])
     d.text((W//2, 150), "CURRENT NODE", fill=C["dm"], font=F["r12"], anchor="ma")
     d.text((W//2, 174), n, fill=C["w"], font=F["b18"], anchor="ma")
-
-    # Stats card
     rrect(d, (40, 210, W-40, 270), 8, t["pn"])
     req = cc.get("total_requests", "?"); sr = cc.get("success_rate", "?")
     d.text((W//2, 222), "TOTAL REQUESTS", fill=C["dm"], font=F["r12"], anchor="ma")
     d.text((W//2, 248), f'{req}  ·  {sr}% success', fill=C["gr"], font=F["b16"], anchor="ma")
-
     dots(d, 1, 6)
     return img
 
@@ -164,15 +156,11 @@ def pg_clash(cl):
     d = ImageDraw.Draw(img)
     node = str(cl.get("current_node", "?"))[:22]
     hdr(d, "CLASH", node, t)
-
-    # Traffic
     used_s = cl.get("traffic_used", "0 GB")
     total_s = cl.get("traffic_total", "?")
     rrect(d, (30, 54, W-30, 112), 8, t["pn"])
     d.text((W//2, 68), "TRAFFIC", fill=C["dm"], font=F["r12"], anchor="ma")
     d.text((W//2, 90), f'{used_s}  /  {total_s}', fill=C["w"], font=F["b24"], anchor="ma")
-
-    # Speed columns
     rrect(d, (30, 124, W-30, 188), 8, t["pn"])
     cw = (W-60)//3
     ul = cl.get("upload_total", 0); dl = cl.get("download_total", 0)
@@ -185,8 +173,6 @@ def pg_clash(cl):
         sx = 36 + i*cw
         d.text((sx, 134), lb, fill=C["dm"], font=F["r12"])
         d.text((sx, 160), v, fill=col, font=F["b20"])
-
-    # Expire / Mode
     rrect(d, (30, 200, W-30, 254), 8, t["pn"])
     exp = cl.get("expire_date", "?"); ver = cl.get("version", "?")
     mode = str(cl.get("mode", "?")).upper()
@@ -194,7 +180,6 @@ def pg_clash(cl):
            fill=C["gr"], font=F["r14"], anchor="ma")
     d.text((W//2, 234), f'Connections: {cl.get("active_connections", "?")}',
            fill=C["dm"], font=F["r13"], anchor="ma")
-
     dots(d, 2, 6)
     return img
 
@@ -204,7 +189,6 @@ def pg_codex(cx):
     img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
     hdr(d, "CODEX", f'Reset {cx.get("reset_time", "?")}', t)
-
     py = 58
     rrect(d, (20, py, W-20, py+110), 8, t["pn"])
     hw = (W-40)//2
@@ -233,46 +217,32 @@ def pg_codex(cx):
     dots(d, 3, 6)
     return img
 
-# ── Page: Weather ──  [v6: bigger date/time, full date, compact cards]
+# ── Page: Weather ──
 def pg_weather(w):
     t = THEMES["weather"]
     img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
-
-    # Header: city + full date
     d.rectangle((0, 0, W, 42), fill=t["hdr_bg"])
     city = w.get("city", "Guangzhou")
     d.text((16, 8), city.upper(), fill=C["w"], font=F["b20"])
-    full_date = time.strftime("%Y-%m-%d  %A")  # 2026-06-05  Friday
+    full_date = time.strftime("%Y-%m-%d  %A")
     tw = d.textlength(full_date, font=F["r14"])
     d.text((W-16-tw, 10), full_date, fill=C["dm"], font=F["r14"])
-
-    # ── Left column: temp + desc + clock ──
     temp_val = w.get("temp", "--°C").replace("°C", "")
     desc = w.get("desc", "?")
     time_str = time.strftime("%H:%M")
-
     d.text((24, 50), f'{temp_val}°', fill=C["w"], font=F["b60"])
     d.text((26, 112), desc, fill=C["gr"], font=F["b16"])
-    # Bigger time
     d.text((26, 135), time_str, fill=(190, 205, 235, 255), font=F["b30"])
-    # Full date repeated below time for emphasis
     d.text((26, 168), time.strftime("%m/%d %A"), fill=C["dm"], font=F["r15"])
-
-    # ── Right: 2x2 stat cards ──
     rx, ry0 = 195, 50
     cw, ch = 130, 64
     gap = 8
-    humidity_val = w.get("humidity", "?%")
-    feels_val = w.get("feels", "--°C")
-    wind_val = w.get("wind", "?")
-    hi_val = w.get("hi", "--"); lo_val = w.get("lo", "--")
-
     stats = [
-        ("HUMIDITY",  humidity_val, (100, 175, 255)),
-        ("FEELS LIKE", feels_val,   (240, 90, 74)),
-        ("WIND",      wind_val,     (130, 200, 175)),
-        ("HI / LO",   f'{hi_val}  {lo_val}', (240, 150, 40)),
+        ("HUMIDITY",  w.get("humidity", "?%"),    (100, 175, 255)),
+        ("FEELS LIKE", w.get("feels", "--°C"),     (240, 90, 74)),
+        ("WIND",      w.get("wind", "?"),         (130, 200, 175)),
+        ("HI / LO",   f'{w.get("hi","--")}  {w.get("lo","--")}', (240, 150, 40)),
     ]
     for idx, (label, value, accent) in enumerate(stats):
         col = idx % 2
@@ -280,16 +250,12 @@ def pg_weather(w):
         cx_card = rx + col*(cw+gap)
         cy_card = ry0 + row*(ch+gap)
         rrect(d, (cx_card, cy_card, cx_card+cw, cy_card+ch), 6, t["card"])
-        # colored left stripe
         d.rectangle((cx_card+2, cy_card+8, cx_card+6, cy_card+ch-8), fill=accent)
         d.text((cx_card+14, cy_card+7), label, fill=C["dm"], font=F["r10"])
         d.text((cx_card+14, cy_card+30), value, fill=accent, font=F["b20"])
-
-    # ── Bottom bar: wttr.in attribution ──
     by = 258
     rrect(d, (20, by, W-20, by+36), 8, t["card"])
     d.text((W//2, by+9), city, fill=C["dm"], font=F["r13"], anchor="ma")
-
     dots(d, 4, 6)
     return img
 
@@ -300,7 +266,6 @@ def pg_omlx(om):
     d = ImageDraw.Draw(img)
     st = "Running" if om.get("running") else "Offline"
     hdr(d, "omLX", st, t)
-
     py = 54
     rrect(d, (14, py, W-14, py+64), 8, t["pn"])
     cw = (W-32)//4
@@ -314,14 +279,12 @@ def pg_omlx(om):
         sx = 20 + i*cw
         d.text((sx, py+10), lb, fill=C["dm"], font=F["r11"])
         d.text((sx, py+34), v, fill=col, font=F["b20"])
-
     py = 130
     ps = om.get("avg_prompt_speed", 0); gs = om.get("avg_gen_speed", 0)
     rrect(d, (14, py, W-14, py+52), 8, t["pn"])
     d.text((24, py+10), "SPEED", fill=C["dm"], font=F["r12"])
     d.text((24, py+28), f'Prompt {fmtk(ps)}/s  ·  Gen {fmtk(gs)}/s',
            fill=C["net"], font=F["b18"])
-
     py = 194
     rrect(d, (14, py, W-14, py+54), 8, t["pn"])
     d.text((24, py+10), "MEMORY", fill=C["dm"], font=F["r12"])
@@ -333,7 +296,6 @@ def pg_omlx(om):
         rrect(d, (bar_x, py+24, bar_x+int(bar_w*mp), py+24+bar_h), 4, gcol(mp*100))
     d.text((bar_x+bar_w+12, py+32), f'{used:.1f}/{ceil:.1f} GB',
            fill=C["gr"], font=F["r13"])
-
     dots(d, 5, 6)
     return img
 
@@ -343,7 +305,6 @@ RENDERERS = {
     "weather": pg_weather, "omlx": pg_omlx,
 }
 
-# ── I/O ──
 def write_fb(path, img):
     with open(path, "wb") as f:
         f.write(img.tobytes("raw", "BGRA"))
@@ -404,16 +365,13 @@ def main():
     p.add_argument("--fb", "-f", default="/dev/fb0")
     p.add_argument("--cycle", "-c", type=int, default=15)
     args = p.parse_args()
-
     show_waiting(args.fb)
     threading.Thread(target=page_cycler, args=(args.fb, args.cycle), daemon=True).start()
-
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(("0.0.0.0", args.port))
     srv.listen(5)
     print(f"SideMon PIL :{args.port} -> {args.fb}  {args.cycle}s x 6", file=sys.stderr)
-
     while True:
         conn, addr = srv.accept()
         print(f"Connected: {addr[0]}", file=sys.stderr)
