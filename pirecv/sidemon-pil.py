@@ -30,13 +30,19 @@ C = {
 
 THEMES = {
     "system":   {"bg": (8, 10, 18, 255),   "pn": (18, 20, 34, 255),
-                 "cpu_bg": (12, 32, 20), "mem_bg": (12, 24, 42), "disk_bg": (40, 24, 8)},
-    "ccswitch": {"bg": (4, 12, 16, 255),  "pn": (14, 26, 32, 255)},
-    "clash":    {"bg": (16, 6, 16, 255),  "pn": (30, 14, 30, 255)},
-    "codex":    {"bg": (20, 12, 28, 255), "pn": (32, 22, 42, 255), "codex_bg": (24, 14, 44)},
+                 "cpu_bg": (12, 32, 20), "mem_bg": (12, 24, 42), "disk_bg": (40, 24, 8),
+                 "hdr_fg": (62, 216, 122, 255)},
+    "ccswitch": {"bg": (4, 12, 16, 255),  "pn": (14, 26, 32, 255),
+                 "hdr_fg": (64, 192, 240, 255)},
+    "clash":    {"bg": (16, 6, 16, 255),  "pn": (30, 14, 30, 255),
+                 "hdr_fg": (240, 130, 50, 255)},
+    "codex":    {"bg": (20, 12, 28, 255), "pn": (32, 22, 42, 255), "codex_bg": (24, 14, 44),
+                 "hdr_fg": (180, 130, 255, 255)},
     "weather":  {"bg": (6, 10, 28, 255),  "pn": (16, 22, 44, 255),
-                 "card": (20, 28, 54, 255), "hdr_bg": (12, 18, 38, 255)},
-    "omlx":     {"bg": (12, 18, 8, 255),  "pn": (22, 34, 18, 255)},
+                 "card": (20, 28, 54, 255), "hdr_bg": (12, 18, 38, 255),
+                 "hdr_fg": (255, 200, 80, 255)},
+    "omlx":     {"bg": (12, 18, 8, 255),  "pn": (22, 34, 18, 255),
+                 "hdr_fg": (100, 220, 100, 255)},
 }
 
 state = {}; lock = threading.Lock()
@@ -71,7 +77,8 @@ def fmtk(n):
 
 def hdr(d, title, sub, t):
     d.rectangle((0, 0, W, 42), fill=t["pn"])
-    d.text((16, 8), title, fill=C["w"], font=F["b20"])
+    fg = t.get("hdr_fg", C["w"])
+    d.text((16, 8), title, fill=fg, font=F["b20"])
     if sub:
         tw = d.textlength(sub, font=F["r12"])
         d.text((W-16-tw, 11), sub, fill=C["dm"], font=F["r12"])
@@ -265,7 +272,7 @@ def pg_omlx(om):
     img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
     st = "Running" if om.get("running") else "Offline"
-    hdr(d, "omLX", st, t)
+    hdr(d, "oMLX", st, t)
     py = 54
     rrect(d, (14, py, W-14, py+64), 8, t["pn"])
     cw = (W-32)//4
