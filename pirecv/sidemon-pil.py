@@ -306,6 +306,7 @@ RENDERERS = {
 }
 
 def write_fb(path, img):
+    img = img.transpose(Image.ROTATE_180)
     with open(path, "wb") as f:
         f.write(img.tobytes("raw", "BGRA"))
 
