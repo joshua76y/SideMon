@@ -344,6 +344,21 @@ def handle_client(conn):
             break
     conn.close()
 
+# ── UDP Discovery Broadcaster ──
+DISCOVERY_PORT = 9878
+
+def discovery_broadcaster(tcp_port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    msg = json.dumps({"type": "sidemon", "port": tcp_port}).encode("utf-8")
+    while True:
+        try:
+            s.sendto(msg, ("255.255.255.255", DISCOVERY_PORT))
+        except:
+            pass
+        time.sleep(5)
+
+
 def page_cycler(fb_dev, cycle_secs):
     order = ["system", "ccswitch", "clash", "codex", "weather", "omlx"]
     page = 0
@@ -367,6 +382,10 @@ def main():
     p.add_argument("--cycle", "-c", type=int, default=15)
     args = p.parse_args()
     show_waiting(args.fb)
+
+    # Start UDP discovery broadcaster
+    threading.Thread(target=discovery_broadcaster, args=(args.port,), daemon=True).start()
+
     threading.Thread(target=page_cycler, args=(args.fb, args.cycle), daemon=True).start()
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

@@ -358,6 +358,43 @@ def get_weather():
 # Main
 # ══════════════════════════════════════════════════════════════════════
 
+
+# ══════════════════════════════════════════════════════════════════════
+# UDP Auto-Discovery
+# ══════════════════════════════════════════════════════════════════════
+
+DISCOVERY_PORT = 9878
+
+def _discover_pi(tcp_port, wait_secs=8.0):
+    """Listen for SideMon UDP broadcasts; try for wait_secs, return Pi IP or None."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        s.bind(("", DISCOVERY_PORT))
+    except OSError:
+        s.close()
+        print("Discovery port busy, skipping auto-discovery")
+        return None
+    s.settimeout(wait_secs)
+    deadline = time.time() + wait_secs
+    try:
+        while time.time() < deadline:
+            try:
+                data, addr = s.recvfrom(1024)
+                msg = json.loads(data.decode("utf-8"))
+                if msg.get("type") == "sidemon":
+                    port = msg.get("port", tcp_port)
+                    print(f"Discovered SideMon Pi at {addr[0]}:{port}")
+                    return addr[0]
+            except socket.timeout:
+                break
+    except Exception as e:
+        print(f"Discovery error: {e}")
+    finally:
+        s.close()
+    print("No SideMon Pi found on LAN, falling back to --host")
+    return None
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--host", "-H", default="192.168.1.24")
@@ -366,8 +403,16 @@ def main():
     p.add_argument("--once", "-1", action="store_true")
     args = p.parse_args()
 
-    try: ip = socket.getaddrinfo(args.host, args.port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
-    except: print(f"Can't resolve {args.host}"); sys.exit(1)
+    # ── UDP auto-discovery ──
+    ip = _discover_pi(args.port)
+    if ip is None:
+        try:
+            ip = socket.getaddrinfo(args.host, args.port, socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
+            print(f"Using --host {args.host} ({ip})")
+        except:
+            print(f"Can't resolve {args.host}"); sys.exit(1)
+    else:
+        print(f"Discovered Pi at {ip}")
 
     def send(data):
         try:
@@ -397,7 +442,7 @@ def main():
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return
 
-    print(f"SideMon → {args.host}:{args.port}  every {args.interval}s", flush=True)
+    print(f"SideMon → {ip}:{args.port}  every {args.interval}s", flush=True)
     prev_net = None; prev_t = None
     codex_last = 0; weather_last = 0
 
