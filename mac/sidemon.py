@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SideMon Mac sender — system / proxy / clash / codex / weather → Pi Zero W."""
 
-import argparse, json, os, re, socket, sqlite3, subprocess, sys, time
+import argparse, datetime, json, os, re, socket, sqlite3, subprocess, sys, time
 
 try: import psutil, requests
 except ImportError: print("pip3 install psutil requests"); sys.exit(1)
@@ -9,6 +9,12 @@ except ImportError: print("pip3 install psutil requests"); sys.exit(1)
 MIHOMO = "/tmp/verge/verge-mihomo.sock"
 CODEX_DB = os.path.expanduser("~/.codex/state_5.sqlite")
 CCSWITCH_DB = os.path.expanduser("~/.cc-switch/cc-switch.db")
+CCSWITCH_DB = os.path.expanduser("~/.cc-switch/cc-switch.db")
+
+# API keys for balance queries
+DEEPSEEK_KEY = "sk-b99b7bc5a9ab418a9a4a049730de95f9"
+MINIMI_KEY = "sk-ci9tn1mcclqu2txx28ns8gijaar1yblqqno7kjwmyrkkla9m"
+MINIMI_BASE = "https://api.xiaomimimo.com"  # XiaoMi Mimo API base URL
 
 # ══════════════════════════════════════════════════════════════════════
 # System
@@ -74,49 +80,23 @@ def _ccswitch_api_key():
 _ccswitch_cache = {"ts": 0, "data": None}
 
 
-# Node name translation map (Chinese → English display names)
-_NODE_TRANS = {
-    "香港": "Hong Kong", "台湾": "Taiwan", "新加坡": "Singapore",
-    "日本": "Japan", "美国": "United States", "加拿大": "Canada",
-    "英国": "United Kingdom", "德国": "Germany", "荷兰": "Netherlands",
-    "意大利": "Italy", "西班牙": "Spain", "土耳其": "Turkey",
-    "澳大利亚": "Australia", "阿根廷": "Argentina", "巴西": "Brazil",
-    "智利": "Chile", "韩国": "Korea", "印度": "India",
-    "以色列": "Israel", "泰国": "Thailand", "越南": "Vietnam",
-    "马来西亚": "Malaysia", "南非": "South Africa",
-    "约翰内斯堡": "Johannesburg",
-}
 
-def _translate_node(name):
-    """Translate Chinese node names to English."""
-    for cn, en in _NODE_TRANS.items():
-        name = name.replace(cn, en)
-    # Remove flag emojis (they're multi-codepoint)
-    import re as _re
-    name = _re.sub(r'[\U0001F1E0-\U0001F1FF]+', '', name).strip()
-    # Clean up separators
-    name = _re.sub(r'\s*\|\s*', ' | ', name)
-    name = _re.sub(r'\s+', ' ', name).strip()
-    return name
-
-def get_ccswitch():
+def get_apis():
     global _ccswitch_cache
     now = time.time()
-    if now - _ccswitch_cache["ts"] < 60 and _ccswitch_cache["data"]:
+    if now - _ccswitch_cache["ts"] < 15 and _ccswitch_cache["data"]:
         return _ccswitch_cache["data"]
 
-    data = {"provider": "Deepseek", "balance": "0", "currency": "CNY", "node": "Unknown"}
-    try:
-        # CC Switch status
-        r = requests.get("http://127.0.0.1:15721/status", timeout=2)
-        if r.ok:
-            s = r.json()
-            data["provider"] = s.get("current_provider", "Deepseek")
-            data["success_rate"] = round(s.get("success_rate", 100), 1)
-            data["total_requests"] = s.get("total_requests", 0)
+    data = {
+        "ds_balance": "?", "ds_currency": "CNY",
+        "mm_balance": "?", "mm_currency": "CNY",
+        "node": "Unknown",
+        "total_tokens": 0, "output_tokens": 0, "cache_hit_rate": 0,
+    }
 
-        # DeepSeek balance
-        key = _ccswitch_api_key()
+    # DeepSeek balance
+    try:
+        key = DEEPSEEK_KEY or _ccswitch_api_key()
         if key:
             r = requests.get("https://api.deepseek.com/user/balance",
                            headers={"Authorization": f"Bearer {key}"}, timeout=5)
@@ -124,17 +104,46 @@ def get_ccswitch():
                 b = r.json()
                 if b.get("is_available") and b.get("balance_infos"):
                     bi = b["balance_infos"][0]
-                    data["balance"] = bi.get("total_balance", "0")
-                    data["currency"] = bi.get("currency", "CNY")
-                    data["topped_up"] = bi.get("topped_up_balance", "0")
-                    data["granted"] = bi.get("granted_balance", "0")
-
-        # Current node from Clash GLOBAL selector
-        node = _mihomo_node()
-        if node:
-            data["node"] = node if node else "Unknown"
+                    data["ds_balance"] = bi.get("total_balance", "?")
+                    data["ds_currency"] = bi.get("currency", "CNY")
     except: pass
 
+    # MiniMi stats — from CC Switch DB (no public balance API)
+    try:
+        db3 = sqlite3.connect(f"file:{CCSWITCH_DB}?mode=ro", uri=True, timeout=2)
+        today_ts = int(datetime.datetime.now().replace(hour=0,minute=0,second=0,microsecond=0).timestamp())
+        row = db3.execute(
+                "SELECT COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),COUNT(*) "
+                "FROM proxy_request_logs WHERE created_at>=? AND model LIKE '%mimo%'",
+                (today_ts,)).fetchone()
+        inp, out, cnt = row
+        data["mm_balance"] = str(inp + out)  # total tokens
+        data["mm_currency"] = f"{cnt} reqs"
+        db3.close()
+    except: pass
+
+    # Daily token usage from CC Switch DB
+    try:
+        db2 = sqlite3.connect(f"file:{CCSWITCH_DB}?mode=ro", uri=True, timeout=2)
+        today_ts = int(datetime.datetime.now().replace(hour=0,minute=0,second=0,microsecond=0).timestamp())
+        row = db2.execute(
+                "SELECT COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),"
+                "COALESCE(SUM(cache_read_tokens),0),COALESCE(SUM(cache_creation_tokens),0),COUNT(*) "
+                "FROM proxy_request_logs WHERE created_at>=?",
+                (today_ts,)).fetchone()
+        inp, out, cache_r, cache_c, cnt = row
+        data["output_tokens"] = out
+        data["total_tokens"] = inp + out
+        data["cache_hit_rate"] = round(cache_r / inp * 100, 1) if inp > 0 else 0
+        db2.close()
+    except: pass
+
+    # Current node from Clash
+    try:
+        node = _mihomo_node()
+        if node:
+            data["node"] = node.strip() if node else "Unknown"
+    except: pass
     _ccswitch_cache = {"ts": now, "data": data}
     return data
 
@@ -146,7 +155,10 @@ def _mihomo(path):
     try:
         r = subprocess.run(["curl","-s","--max-time","2","--unix-socket",MIHOMO,
                            f"http://localhost{path}"], capture_output=True, text=True, timeout=3)
-        return json.loads(r.stdout) if r.stdout else None
+        if not r.stdout: return None
+        # Take last JSON line (traffic endpoint may return multiple)
+        lines = [l for l in r.stdout.strip().split("\n") if l.strip().startswith("{")]
+        return json.loads(lines[-1]) if lines else None
     except: return None
 
 def _mihomo_node():
@@ -217,8 +229,6 @@ def get_codex():
 
     result = {
         "tokens_5h": 0, "tokens_7d": 0,
-        "tokens_5h_pct": 0.0, "tokens_7d_pct": 0.0,
-        "budget_5h": 200000, "budget_7d": 7000000,
         "reset_time": "", "model": "deepseek-v4-pro",
     }
     try:
@@ -236,10 +246,7 @@ def get_codex():
         db.close()
     except: pass
 
-    if result["budget_5h"] > 0:
-        result["tokens_5h_pct"] = round(result["tokens_5h"] / result["budget_5h"] * 100, 1)
-    if result["budget_7d"] > 0:
-        result["tokens_7d_pct"] = round(result["tokens_7d"] / result["budget_7d"] * 100, 1)
+
 
     from datetime import datetime, timezone, timedelta
     utc = datetime.now(timezone.utc)
@@ -401,7 +408,16 @@ def main():
     p.add_argument("--port", "-P", type=int, default=9877)
     p.add_argument("--interval", "-i", type=float, default=1.0)
     p.add_argument("--once", "-1", action="store_true")
+    p.add_argument("--ds-key", help="DeepSeek API key (or set DEEPSEEK_KEY env)")
+    p.add_argument("--mm-key", help="MiniMi API key (or set MINIMI_KEY env)")
+    p.add_argument("--mm-base", help="MiniMi API base URL")
     args = p.parse_args()
+
+    global DEEPSEEK_KEY, MINIMI_KEY, MINIMI_BASE
+    DEEPSEEK_KEY = args.ds_key or os.environ.get("DEEPSEEK_KEY")
+    MINIMI_KEY = args.mm_key or os.environ.get("MINIMI_KEY")
+    if args.mm_base:
+        MINIMI_BASE = args.mm_base
 
     # ── UDP auto-discovery ──
     ip = _discover_pi(args.port)
@@ -434,7 +450,7 @@ def main():
         if t is not None: sysd["temp"] = round(t,1)
         payload = {
             "system": sysd, "proxy": get_proxy(),
-            "ccswitch": get_ccswitch(), "clash": get_clash(),
+            "ccswitch": get_apis(), "clash": get_clash(),
             "codex": get_codex(), "weather": get_weather(),
             "omlx": get_omlx(),
         }
@@ -459,17 +475,16 @@ def main():
             else: nr, nt = 0, 0
             prev_net = (c.bytes_recv, c.bytes_sent); prev_t = now
 
+            dk = round(get_disk(),1)
             sysd = {
                 "cpu": round(cpu,1), "mem": round(mp,1), "mem_total": round(mt),
-                "disk": round(get_disk(),1), "load": get_load(),
+                "disk": dk, "load": get_load(),
                 "net_rx": nr, "net_tx": nt,
                 "uptime": get_uptime(), "hostname": socket.gethostname(),
             }
-            t = get_temp()
-            if t is not None: sysd["temp"] = round(t,1)
 
             payload = {"system": sysd, "proxy": get_proxy(), "clash": get_clash(),
-                       "ccswitch": get_ccswitch(), "omlx": get_omlx()}
+                       "ccswitch": get_apis(), "omlx": get_omlx()}
             if now - codex_last > 30:
                 payload["codex"] = get_codex(); codex_last = now
             if now - weather_last > 600:
@@ -478,8 +493,8 @@ def main():
             send(payload)
 
             cn = payload.get("clash",{}).get("current_node","?")[:25]
-            bal = payload.get("ccswitch",{}).get("balance","?")
-            print(f"CPU:{cpu:5.1f}% MEM:{mp:5.1f}% DISK:{get_disk():5.1f}% "
+            bal = payload.get("ccswitch",{}).get("ds_balance","?")
+            print(f"CPU:{cpu:5.1f}% MEM:{mp:5.1f}% DISK:{dk:5.1f}% "
                   f"LOAD:{sysd['load'][0]:.2f} Proxy:{'ON' if payload['proxy']['enabled'] else 'OFF'} "
                   f"Node:{cn} Bal:{bal}",
                   end="\r", flush=True)

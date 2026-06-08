@@ -63,6 +63,12 @@ def gcol(p):
     if p < 85: return C["warn"]
     return C["dng"]
 
+def fmt_tk(n):
+    if n >= 1_000_000_000: return f"{n/1e9:.1f}B"
+    if n >= 1_000_000: return f"{n/1e6:.1f}M"
+    if n >= 1000: return f"{n/1000:.0f}K"
+    return str(n)
+
 def fmtb(n):
     if n >= 1<<30: return f"{n/(1<<30):.1f} GB"
     if n >= 1<<20: return f"{n/(1<<20):.1f} MB"
@@ -99,7 +105,7 @@ def pg_system(s):
     d = ImageDraw.Draw(img)
     hdr(d, "SYSTEM", s.get("hostname", "?"), t)
 
-    ry = 130; cx = [96, 240, 384]; ri, ro = 35, 50
+    ry = 145; cx = [96, 240, 384]; ri, ro = 35, 50
     rings = [
         (s.get("cpu", 0)/100,  C["cpu"],  t["cpu_bg"],  f"{int(s.get('cpu',0))}", "%"),
         (s.get("mem", 0)/100,  C["mem"],  t["mem_bg"],  f"{int(s.get('mem',0))}", "%"),
@@ -114,45 +120,75 @@ def pg_system(s):
         # Suffix "%" — small, placed to the right of the number, same baseline
         tw = d.textlength(val, font=F["b36"])
         d.text((x + tw//2 + 4, ry+4), suf, fill=C["dm"], font=F["b18"], anchor="lm")
+    # Labels above rings
+    labels = ["CPU", "MEM", "DISK"]
+    for i, (lb, x) in enumerate(zip(labels, cx)):
+        d.text((x, ry-ro-16), lb, fill=C["gr"], font=F["b14"], anchor="ma")
 
-    by = 200
+    by = 215
     rrect(d, (12, by, W-12, by+60), 8, t["pn"])
     ld = s.get("load", [0,0,0]); rx = s.get("net_rx", 0); tx = s.get("net_tx", 0)
-    temp = s.get("temp", 0); up = s.get("uptime", "?")
-    cw = (W-24)//4
+    up = s.get("uptime", "?")
+    cw = (W-24)//3; cx0 = 12 + cw//2
     items = [
         ("LOAD", f"{ld[0]:.1f} {ld[1]:.1f} {ld[2]:.1f}", C["load"]),
         ("NET",  f"↓{fmtb(rx)} ↑{fmtb(tx)}", C["net"]),
-        ("TEMP", f"{int(temp)}°C", C["dng"] if temp > 80 else C["gn"]),
         ("UP",   str(up), C["gr"]),
     ]
     for i, (lb, v, col) in enumerate(items):
-        sx = 18 + i*cw
-        d.text((sx, by+8), lb, fill=C["dm"], font=F["r11"])
+        cx = cx0 + i*cw
+        d.text((cx, by+8), lb, fill=C["dm"], font=F["r11"], anchor="ma")
         fnt = F["r13"] if len(v) > 12 else F["b15"]
-        d.text((sx, by+30), v, fill=col, font=fnt)
+        d.text((cx, by+30), v, fill=col, font=fnt, anchor="ma")
 
     dots(d, 0, 6)
     return img
 
-# ── Page: CC Switch ──
-def pg_ccswitch(cc):
+# ── Page: API Usage ──
+def pg_apis(api):
     t = THEMES["ccswitch"]
     img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
-    hdr(d, "CC SWITCH", "DeepSeek", t)
-    bal = f'{cc.get("balance", "?")}'
-    cur = cc.get("currency", "CNY")
-    d.text((W//2, 58), bal, fill=C["w"], font=F["b52"], anchor="ma")
-    d.text((W//2, 112), f'{cur} remaining', fill=C["gr"], font=F["r16"], anchor="ma")
-    n = str(cc.get("current_node", "?"))[:35]
-    rrect(d, (40, 138, W-40, 198), 8, t["pn"])
-    d.text((W//2, 150), "CURRENT NODE", fill=C["dm"], font=F["r12"], anchor="ma")
-    d.text((W//2, 174), n, fill=C["w"], font=F["b18"], anchor="ma")
-    rrect(d, (40, 210, W-40, 270), 8, t["pn"])
-    req = cc.get("total_requests", "?"); sr = cc.get("success_rate", "?")
-    d.text((W//2, 222), "TOTAL REQUESTS", fill=C["dm"], font=F["r12"], anchor="ma")
-    d.text((W//2, 248), f'{req}  ·  {sr}% success', fill=C["gr"], font=F["b16"], anchor="ma")
+    node = str(api.get("node", "?"))[:30]
+    hdr(d, "API USAGE", node, t)
+
+    # Two balance cards side by side
+    providers = [
+        ("DeepSeek", api.get("ds_balance", "?"), api.get("ds_currency", "CNY"), (62,216,122)),
+        ("MiMo",     api.get("mm_balance", "?"), api.get("mm_currency", "tokens"), (240,150,40)),
+    ]
+    card_w, card_h = 200, 72
+    gap = 20
+    sx = (W - 2*card_w - gap)//2
+    cy = 56
+    for i, (name, bal, cur, accent) in enumerate(providers):
+        cx = sx + i*(card_w+gap)
+        rrect(d, (cx, cy, cx+card_w, cy+card_h), 10, t["pn"])
+        # Accent bar on left
+        d.rectangle((cx+3, cy+12, cx+7, cy+card_h-12), fill=accent)
+        d.text((cx+16, cy+8), name, fill=C["dm"], font=F["r13"])
+        val = bal if isinstance(bal, str) else fmt_tk(int(bal)) if isinstance(bal, (int,float)) else bal
+        fnt = F["b28"] if len(str(val)) < 6 else F["b22"]
+        d.text((cx+16, cy+28), str(val), fill=C["w"], font=fnt)
+        d.text((cx+16, cy+52), cur if isinstance(cur, str) else str(cur), fill=C["gr"], font=F["r12"])
+
+    # Today's token usage
+    py = cy + card_h + 16
+    rrect(d, (20, py, W-20, py+68), 10, t["pn"])
+    d.text((W//2, py+6), "TODAY", fill=C["dm"], font=F["r12"], anchor="ma")
+    out = api.get("output_tokens", 0); ch = api.get("cache_hit_rate", 0)
+    total = api.get("total_tokens", 0)
+    cw = (W-60)//3; cx0 = 30 + cw//2
+    cols = [
+        (f'{fmt_tk(total)}', "ALL TOKENS", C["mem"]),
+        (f'{fmt_tk(out)}',   "OUTPUT",    C["cpu"]),
+        (f'{ch}%', "CACHE HIT", C["gn"] if isinstance(ch, (int,float)) and ch > 50 else C["warn"]),
+    ]
+    for i, (val, lb, col) in enumerate(cols):
+        cx = cx0 + i*cw
+        d.text((cx, py+24), val, fill=col, font=F["b22"], anchor="ma")
+        d.text((cx, py+48), lb, fill=C["dm"], font=F["r12"], anchor="ma")
+
     dots(d, 1, 6)
     return img
 
@@ -199,26 +235,18 @@ def pg_codex(cx):
     py = 58
     rrect(d, (20, py, W-20, py+110), 8, t["pn"])
     hw = (W-40)//2
-    p5 = min(cx.get("tokens_5h_pct", 0), 100)
-    pw = min(cx.get("tokens_7d_pct", 0), 100)
+    t5 = cx.get("tokens_5h", 0); t7 = cx.get("tokens_7d", 0)
     items = [
-        ("5-HOUR", f'{int(p5)}%', C["codex"] if p5 < 85 else C["dng"]),
-        ("7-DAY",  f'{int(pw)}%', C["warn"] if pw < 85 else C["dng"]),
+        ("5-HOUR", fmt_tk(t5), C["codex"]),
+        ("7-DAY",  fmt_tk(t7), C["warn"]),
     ]
     for i, (lb, v, col) in enumerate(items):
         sx = 30 + i*hw
         d.text((sx, py+10), lb, fill=C["dm"], font=F["r14"])
         d.text((sx, py+34), v, fill=col, font=F["b44"])
-    bar_x, bar_w = 30, hw-20
-    for i, (pct, col) in enumerate([(p5, C["codex"]), (pw, C["warn"])]):
-        bx = 30 + i*hw
-        rrect(d, (bx, py+86, bx+bar_w, py+96), 3, t["bg"])
-        if pct > 0:
-            rrect(d, (bx, py+86, bx+int(bar_w*pct/100), py+96), 3, col)
     py = 182
     rrect(d, (20, py, W-20, py+52), 8, t["pn"])
     m = str(cx.get("model", "?"))[:38]
-    t5 = cx.get("tokens_5h", 0); t7 = cx.get("tokens_7d", 0)
     d.text((30, py+8), m, fill=C["w"], font=F["b18"])
     d.text((30, py+34), f'5H:{fmtk(t5)}  7D:{fmtk(t7)}', fill=C["gr"], font=F["r14"])
     dots(d, 3, 6)
@@ -307,7 +335,7 @@ def pg_omlx(om):
     return img
 
 RENDERERS = {
-    "system": pg_system, "ccswitch": pg_ccswitch,
+    "system": pg_system, "ccswitch": pg_apis,
     "clash": pg_clash, "codex": pg_codex,
     "weather": pg_weather, "omlx": pg_omlx,
 }
@@ -329,12 +357,16 @@ def show_waiting(fb_dev):
 
 def handle_client(conn):
     buf = b""
-    while True:
+    idle = 0
+    while idle < 10:
         try:
             r, _, _ = select.select([conn], [], [], 1.0)
-            if not r: continue
+            if not r:
+                idle += 1
+                continue
             data = conn.recv(65536)
             if not data: break
+            idle = 0
             buf += data
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)

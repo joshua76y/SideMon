@@ -1,155 +1,131 @@
-# SideMon
+# RpiZeroMon
 
-Mac 系统状态副屏监控 —— 在树莓派 Zero W 配 3.5 寸 TFT 屏幕上实时显示主机信息。
+> 树莓派 Zero W + 3.5 寸 GPIO 屏幕 = 一台精美的 Mac 状态副屏
 
-## 效果预览
+通过 USB/网络将 Mac 的系统状态、API 用量、代理信息等实时推送到树莓派 Zero W 的 3.5 寸 SPI 屏幕上，6 个页面每 15 秒自动轮播。
 
-480×320 分辨率，深色主题，6 个页面各有独特的背景色调，每 15 秒循环切换。
+## 页面展示
 
-### System — 系统资源
+| 系统状态 | API 用量 |
+|----------|----------|
+| ![](screenshots/system.png) | ![](screenshots/ccswitch.png) |
 
-![System](screenshots/01-system.png)
+| Clash 代理 | Codex 用量 |
+|------------|------------|
+| ![](screenshots/clash.png) | ![](screenshots/codex.png) |
 
-CPU / 内存 / 磁盘环形进度图，Load Average、网络速率、温度、运行时长。
-
-### CC Switch — DeepSeek 余额
-
-![CC Switch](screenshots/02-ccswitch.png)
-
-当前余额、货币单位、连接节点、总请求数与成功率。
-
-### Clash — 代理状态
-
-![Clash](screenshots/03-clash.png)
-
-流量使用量 / 上限、上传 / 下载总量、当前连接数、代理模式、到期日、版本号。
-
-### Codex — Token 用量
-
-![Codex](screenshots/04-codex.png)
-
-5 小时 / 7 天 Token 用量百分比（带进度条）、使用的模型、绝对用量、重置时间。
-
-### Weather — 天气与时间
-
-![Weather](screenshots/05-weather.png)
-
-当前温度、天气描述、实时时钟、完整年月日及星期、湿度、体感温度、风力、最高/最低温。
-
-### omLX — 本地模型推理
-
-![omLX](screenshots/06-omlx.png)
-
-总请求数、Prompt / Completion Token、缓存命中率、推理速度、显存使用量。
+| 天气 | oMLX 本地模型 |
+|------|---------------|
+| ![](screenshots/weather.png) | ![](screenshots/omlx.png) |
 
 ## 架构
 
 ```
-┌──────────┐   TCP/JSON    ┌──────────────┐    fbcp      ┌───────────┐
-│   Mac    │ ────────────→ │  Pi Zero W   │ ──────────→ │ 3.5" TFT  │
-│ (发送端)  │   每秒发送     │ (接收 + 渲染)  │  DMA / SPI  │ ILI9486   │
-└──────────┘               └──────────────┘             │ 480×320   │
-                                                        └───────────┘
+┌─────────────┐    TCP:9877     ┌──────────────────┐
+│  Mac 发送端  │ ──────────────→ │  树莓派 Zero W    │
+│  sidemon.py  │   每秒推送 JSON  │  sidemon-pil.py   │
+│              │                 │  PIL 渲染到 /dev/fb0 │
+└─────────────┘                 └──────────────────┘
+                                      │
+                                      ↓
+                                3.5" SPI 屏幕
+                                (480×320, 旋转 180°)
 ```
 
-- **Mac 端** (`mac/sidemon.py`)：采集 CPU、内存、磁盘、网络、温度等系统信息，以及 CC Switch 余额、Clash 代理状态、Codex Token 用量、omLX 推理统计、天气数据，通过 TCP 发送 JSON 到树莓派。
-- **树莓派 Zero W** (`pirecv/sidemon-pil.py`)：接收 JSON 数据，用 Pillow 渲染 6 个页面并输出到 `/dev/fb0` 帧缓冲。
-- **fbcp-ili9341**：高效的帧缓冲到 SPI 屏幕 DMA 驱动，将 `/dev/fb0` 内容推送到 ILI9486 屏幕，支持自适应差分更新，在 Pi Zero W 上达到流畅刷新。
+- **Mac 端**（`mac/sidemon.py`）：采集系统状态、API 余额、Clash 代理、Codex 用量、天气、oMLX 等信息，打包为 JSON 通过 TCP 推送到 Pi
+- **Pi 端**（`pirecv/sidemon-pil.py`）：接收 JSON 数据，用 Pillow 渲染 6 个页面到 framebuffer，15 秒轮播
+- **自动发现**：Pi 端通过 UDP 广播（端口 9878），Mac 端自动扫描局域网找到 Pi
 
-## 设计细节
+## 6 个页面
 
-- **每页独立配色**：System 深灰、CC Switch 深青、Clash 深紫、Codex 紫蓝、Weather 深蓝、omLX 深绿，切换时一眼可辨
-- **环形进度图**：CPU（绿）、内存（蓝）、磁盘（橙）三环并排，百分比数字精确居中
-- **彩色信息卡片**：天气页用带色条的卡片区分湿度、体感温度、风力、高低温度
-- **Piboto 字体**：使用 Raspberry Pi OS 自带英文字体，渲染效果清晰锐利
-- **15 秒自动循环**：底部圆点指示器显示当前页面位置
+| 页面 | 内容 | 数据来源 |
+|------|------|----------|
+| **SYSTEM** | CPU / 内存 / 磁盘 环形图，负载，网络，运行时间 | `psutil` |
+| **API USAGE** | DeepSeek 余额 + MiMo 当日 Token 用量，缓存命中率 | DeepSeek API + CC Switch 数据库 |
+| **CLASH** | 当前节点，已用/总流量，上传/下载，到期时间 | Mihomo Unix Socket API |
+| **CODEX** | 5 小时 / 7 天 Token 用量，重置时间 | Codex SQLite 数据库 |
+| **WEATHER** | 温度、体感、湿度、风速、最高/最低温 | wttr.in API |
+| **oMLX** | 请求数、Prompt/Completion Token、缓存效率、内存 | oMLX HTTP API + stats.json |
 
-## 硬件
+## 快速开始
 
-| 组件 | 型号 |
-|------|------|
-| 主控 | Raspberry Pi Zero W |
-| 屏幕 | WaveShare 3.5" TFT (ILI9486, 480×320, SPI) |
-| 系统 | Raspberry Pi OS (Bookworm) Lite |
-| 连线 | GPIO: DC=BCM24, RST=BCM25, BL=BCM18, SPI0 |
+### 硬件要求
 
-### /boot/config.txt
+- 树莓派 Zero W（或任何树莓派）
+- 3.5 寸 GPIO SPI 屏幕（ILI9486 驱动）
+- Raspberry Pi OS Lite（无桌面环境）
 
-```
-dtparam=spi=on
-hdmi_group=2
-hdmi_mode=87
-hdmi_cvt=480 320 60
-hdmi_force_hotplug=1
-```
+### 1. Pi 端安装
 
-### /boot/cmdline.txt 追加
+屏幕驱动使用 [lcddiy/LCD-show](https://github.com/lcddiy/LCD-show)：
 
-```
-bcm2708_fb.fbwidth=480 bcm2708_fb.fbheight=320 bcm2708_fb.fbswap=1
+```bash
+git clone https://github.com/lcddiy/LCD-show.git
+cd LCD-show
+sudo ./LCD35-show
 ```
 
-## 安装
+安装依赖并部署 sidemon-pil：
 
-### 树莓派
+```bash
+sudo apt-get install -y python3-pip
+pip3 install pillow
+
+# 将 pirecv/sidemon-pil.py 复制到 /home/pi/
+# 创建 systemd 服务实现开机自启：
+sudo tee /etc/systemd/system/sidemon-pil.service << 'SVC'
+[Unit]
+Description=SideMon PIL SPI dashboard
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/sidemon-pil.py --fb /dev/fb0 --cycle 15
+Restart=always
+User=pi
+WorkingDirectory=/home/pi
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now sidemon-pil
+```
+
+### 2. Mac 端运行
 
 ```bash
 # 安装依赖
-sudo apt install -y python3-pil git cmake
-
-# 编译 fbcp-ili9341（帧缓冲到 SPI 屏幕的 DMA 驱动）
-git clone https://github.com/juj/fbcp-ili9341.git
-cd fbcp-ili9341 && mkdir build && cd build
-cmake -DWAVESHARE35B_ILI9486=ON -DCMAKE_BUILD_TYPE=Release ..
-make -j$(nproc)
-sudo install fbcp-ili9341 /usr/local/bin/
-
-# 复制接收端脚本
-scp pirecv/sidemon-pil.py pi@192.168.1.24:/home/pi/
-
-# 安装 systemd 服务
-sudo cp pirecv/fbcp-ili9341.service /etc/systemd/system/
-sudo cp pirecv/sidemon-pil.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable fbcp-ili9341 sidemon-pil
-sudo systemctl start fbcp-ili9341 sidemon-pil
-```
-
-### Mac
-
-```bash
 pip3 install psutil requests
 
-cd mac
-python3 sidemon.py --host 192.168.1.24 --port 9877 -i 1
-
-# 或使用 launchd 开机自启
-cp com.sidemon.sender.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.sidemon.sender.plist
+# 运行发送端（自动发现 Pi 或手动指定 IP）
+python3 mac/sidemon.py --host 192.168.1.37 -i 1
 ```
 
-## 目录结构
+### 3. 桌面 App
 
-```
-SideMon/
-├── README.md
-├── screenshots/               # 各页面截图
-├── mac/
-│   ├── sidemon.py             # Mac 发送端
-│   └── requirements.txt
-├── pirecv/
-│   ├── sidemon-pil.py         # Pi 接收端（Pillow 渲染 → /dev/fb0）
-│   └── ili9486.py             # ILI9486 直驱模块（备用）
-└── run_sender.sh              # 发送端保活脚本
+```bash
+# 编译为 .app
+pip3 install py2app
+python3 setup.py py2app
+# 输出在 dist/RpiZeroMon.app，可拖到桌面双击运行
 ```
 
-## 故障排查
+## 命令行参数
 
-| 现象 | 解决方法 |
-|------|----------|
-| 白屏 | 检查 `fbcp-ili9341` 是否运行：`systemctl status fbcp-ili9341` |
-| 一直显示 "Waiting for data..." | Mac 发送端未运行或 IP 不通 |
-| 屏幕闪烁 | 调整 fbcp 编译参数或降低 SPI 频率 |
-| 某些页面数据不全 | 检查 Mac 端对应软件是否运行，字段名是否匹配 |
-| 页面内容重叠 | 更新到最新版 `sidemon-pil.py`，已修复布局问题 |
-| 中文显示为方块 | 已移除中文字体。若需中文，请自行配置支持 CJK 的 ttf 字体 |
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--host`, `-H` | Pi 的 IP 地址（自动发现失败时使用） | `192.168.1.24` |
+| `--port`, `-P` | TCP 端口 | `9877` |
+| `--interval`, `-i` | 数据推送间隔（秒） | `1.0` |
+| `--once`, `-1` | 单次采集并打印 JSON，不循环 | — |
+| `--ds-key` | DeepSeek API Key（也可设 `DEEPSEEK_KEY` 环境变量） | — |
+| `--mm-key` | MiMo API Key（也可设 `MINIMI_KEY` 环境变量） | — |
+
+## 一键部署脚本
+
+```bash
+cd /Volumes/MACdata/Docs/Documents/SideMon && bash deploy_pi.sh
+```
+
+自动完成：连接测试 → 停服务 → 上传代码 → 启服务 → 显示日志。
