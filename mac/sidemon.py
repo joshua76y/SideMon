@@ -885,66 +885,78 @@ def run_gui_app(args):
             mask = (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
             self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, 520, 420), mask, NSBackingStoreBuffered, False
+                NSMakeRect(0, 0, 520, 480), mask, NSBackingStoreBuffered, False
             )
             self.window.setTitle_("RpiZeroMon Settings")
             self.window.setReleasedWhenClosed_(False)
             self.window.setDelegate_(self)
-            self.window.setMinSize_(NSMakeSize(400, 300))
+            self.window.setMinSize_(NSMakeSize(400, 320))
             self.window.center()
 
-            # Bottom bar (fixed, not scrolled)
-            self.status_label = self.label("Sender starting...", 24, 14, 400, 20)
-            self.button("Save", "saveSettings:", 476, 10, 86)
-            self.button("Close", "closeWindow:", 576, 10, 86)
+            contentView = self.window.contentView()
+            win_w = 520
+            bar_h = 40  # bottom bar height
 
-            # Scrollable content area above the bottom bar
-            content_h = 460
-            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 40, 520, 360))
+            # ── Bottom bar (fixed, on contentView) ──
+            bar_y = 0  # Cocoa: y=0 is bottom
+            self.status_label = self.label("Sender starting...", 12, bar_y+10, 300, 20)
+            self.button("Save", "saveSettings:", win_w-180, bar_y+6, 80)
+            self.button("Close", "closeWindow:", win_w-88, bar_y+6, 80)
+
+            # ── Scroll area (fills remaining space above bar) ──
+            scroll_h = 480 - bar_h
+            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, bar_h, win_w, scroll_h))
             scroll.setHasVerticalScroller_(True)
             scroll.setHasHorizontalScroller_(False)
             scroll.setAutohidesScrollers_(True)
-            scroll.setBorderType_(0)  # NSNoBorder
+            scroll.setBorderType_(0)
 
-            inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 500, content_h))
-            cy = content_h  # y coordinate, counting down
+            # ── Inner view with top-down layout ──
+            # Cocoa y-axis goes UP, so we build top-down in a tall view
+            # then the scroll view shows the top (which is the start of content)
+            inner_h = 600  # generous height for scrolling
+            inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, win_w-20, inner_h))
+
+            # Build content top-down. "cy" tracks distance from top of inner view.
+            # Convert to Cocoa y: cocoa_y = inner_h - cy - element_height
+            cy = 10  # top padding
 
             # -- Display section --
-            lbl = self._addLabel(inner, "Display", 10, cy-22, 200, 20, 14, True)
-            cy -= 30
-            self._addLabel(inner, "IP", 12, cy, 30)
-            self._addTextField(inner, "host", 44, cy-2, 160)
-            self._addLabel(inner, "Port", 232, cy, 40)
-            self._addTextField(inner, "port", 272, cy-2, 60)
-            self._addLabel(inner, "Interval", 340, cy, 60)
-            self._addTextField(inner, "interval", 400, cy-2, 50)
-            self._addButton(inner, "Find", "rediscover:", 410, cy-4, 60)
-            cy -= 36
+            self._addLabel(inner, "Display", 10, inner_h - cy - 20, win_w-40, 20, 14, True)
+            cy += 28
+            row_y = inner_h - cy
+            self._addLabel(inner, "IP", 12, row_y, 30)
+            self._addTextField(inner, "host", 44, row_y-2, 160)
+            self._addLabel(inner, "Port", 232, row_y, 40)
+            self._addTextField(inner, "port", 272, row_y-2, 60)
+            self._addLabel(inner, "Interval", 340, row_y, 60)
+            self._addTextField(inner, "interval", 400, row_y-2, 50)
+            self._addButton(inner, "Find", "rediscover:", 460, row_y-4, 40)
+            cy += 34
 
             # -- Pages section --
-            lbl = self._addLabel(inner, "Pages", 10, cy-22, 200, 20, 14, True)
-            cy -= 28
-            self.buildPageTable(inner, 10, cy-140, 480, 140)
-            cy -= 150
+            self._addLabel(inner, "Pages", 10, inner_h - cy - 18, win_w-40, 20, 14, True)
+            cy += 24
+            table_h = 130
+            self.buildPageTable(inner, 10, inner_h - cy - table_h, win_w-40, table_h)
+            cy += table_h + 8
 
             # -- API & Data Sources --
-            lbl = self._addLabel(inner, "API & Data Sources", 10, cy-22, 240, 20, 14, True)
-            cy -= 28
+            self._addLabel(inner, "API & Data Sources", 10, inner_h - cy - 18, win_w-40, 20, 14, True)
+            cy += 24
             rows = [
                 ("DeepSeek Key", "deepseek_key", True),
                 ("MiMo Key", "mimo_key", True),
                 ("MiMo Base", "mimo_base", False),
             ]
             for title, key, secure in rows:
-                self._addLabel(inner, title, 12, cy+3, 110)
-                self._addTextField(inner, key, 128, cy, 360, secure=secure)
-                cy -= 28
+                row_y = inner_h - cy
+                self._addLabel(inner, title, 12, row_y+3, 110)
+                self._addTextField(inner, key, 128, row_y, 360, secure=secure)
+                cy += 28
 
-            # Trim inner view height to actual content
-            actual_h = max(content_h, content_h - cy + 20)
-            inner.setFrame_(NSMakeRect(0, 0, 500, actual_h))
             scroll.setDocumentView_(inner)
-            self.window.contentView().addSubview_(scroll)
+            contentView.addSubview_(scroll)
             self._scroll_view = scroll
 
         @objc.python_method
