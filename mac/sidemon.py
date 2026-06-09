@@ -906,25 +906,25 @@ def run_gui_app(args):
             scroll.setAutohidesScrollers_(True)
             scroll.setBorderType_(0)  # NSNoBorder
 
-            inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 660, content_h))
+            inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 500, content_h))
             cy = content_h  # y coordinate, counting down
 
             # -- Display section --
             lbl = self._addLabel(inner, "Display", 10, cy-22, 200, 20, 14, True)
             cy -= 30
             self._addLabel(inner, "IP", 12, cy, 30)
-            self._addTextField(inner, "host", 44, cy-2, 180)
+            self._addTextField(inner, "host", 44, cy-2, 160)
             self._addLabel(inner, "Port", 232, cy, 40)
             self._addTextField(inner, "port", 272, cy-2, 60)
             self._addLabel(inner, "Interval", 340, cy, 60)
             self._addTextField(inner, "interval", 400, cy-2, 50)
-            self._addButton(inner, "Find", "rediscover:", 460, cy-4, 60)
+            self._addButton(inner, "Find", "rediscover:", 410, cy-4, 60)
             cy -= 36
 
             # -- Pages section --
             lbl = self._addLabel(inner, "Pages", 10, cy-22, 200, 20, 14, True)
             cy -= 28
-            self.buildPageTable(inner, 10, cy-140, 640, 140)
+            self.buildPageTable(inner, 10, cy-140, 480, 140)
             cy -= 150
 
             # -- API & Data Sources --
@@ -937,12 +937,12 @@ def run_gui_app(args):
             ]
             for title, key, secure in rows:
                 self._addLabel(inner, title, 12, cy+3, 110)
-                self._addTextField(inner, key, 128, cy, 500, secure=secure)
+                self._addTextField(inner, key, 128, cy, 360, secure=secure)
                 cy -= 28
 
             # Trim inner view height to actual content
             actual_h = max(content_h, content_h - cy + 20)
-            inner.setFrame_(NSMakeRect(0, 0, 660, actual_h))
+            inner.setFrame_(NSMakeRect(0, 0, 500, actual_h))
             scroll.setDocumentView_(inner)
             self.window.contentView().addSubview_(scroll)
             self._scroll_view = scroll
