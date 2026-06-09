@@ -885,110 +885,61 @@ def run_gui_app(args):
             mask = (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
             self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, 520, 480), mask, NSBackingStoreBuffered, False
+                NSMakeRect(0, 0, 440, 300), mask, NSBackingStoreBuffered, False
             )
             self.window.setTitle_("RpiZeroMon Settings")
             self.window.setReleasedWhenClosed_(False)
             self.window.setDelegate_(self)
-            self.window.setMinSize_(NSMakeSize(400, 320))
+            self.window.setMinSize_(NSMakeSize(440, 300))
+            self.window.setReleasedWhenClosed_(False)
             self.window.center()
 
-            # Use a flipped NSView as content so y=0 is top-left (like HTML)
-            class FlippedView(NSView):
-                def isFlipped(self): return True
-
+            # All content goes directly on contentView (no scroll needed — compact layout)
             cv = self.window.contentView()
-            win_w, win_h = 520, 480
-            bar_h = 40
+            win_w = 440
+            y = 300  # Cocoa y: bottom=0, top=300. We go top-down by subtracting.
 
-            # ── Scroll area fills the whole window ──
-            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 0, win_w, win_h))
-            scroll.setHasVerticalScroller_(True)
-            scroll.setHasHorizontalScroller_(False)
-            scroll.setAutohidesScrollers_(True)
-            scroll.setBorderType_(0)
-            cv.addSubview_(scroll)
+            # ── Display ──
+            y -= 20
+            self.addLabel(cv, "Display", 12, y, 400, 18, 13, True)
+            y -= 26
+            self.addLabel(cv, "IP", 12, y, 30)
+            self.addTextField(cv, "host", 44, y-2, 160)
+            self.addLabel(cv, "Port", 230, y, 36)
+            self.addTextField(cv, "port", 270, y-2, 60)
+            self.addLabel(cv, "Interval", 346, y, 60)
+            self.addTextField(cv, "interval", 406, y-2, 26)
+            self.addButton(cv, "Find", "rediscover:", win_w-56, y-4, 44)
+            y -= 30
 
-            # Flipped inner view — y=0 is top, increases downward
-            inner_w = win_w
-            inner_h = win_h + 100  # enough to scroll
-            inner = FlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, inner_w, inner_h))
+            # ── Pages ──
+            self.addLabel(cv, "Pages", 12, y, 400, 18, 13, True)
+            y -= 4
+            table_h = 100
+            self.buildPageTable(cv, 12, y - table_h, win_w - 24, table_h)
+            y -= table_h + 8
 
-            # ── Build content top-down (y increases = going down) ──
-            y = 10  # top padding
-
-            # -- Display --
-            lbl = NSTextField.alloc().initWithFrame_(NSMakeRect(10, y, inner_w-20, 20))
-            lbl.setStringValue_("Display"); lbl.setEditable_(False); lbl.setSelectable_(False)
-            lbl.setBezeled_(False); lbl.setDrawsBackground_(False)
-            lbl.setFont_(NSFont.boldSystemFontOfSize_(14))
-            inner.addSubview_(lbl)
-            y += 24
-
-            row = y
-            for lbl_text, key, x_off, w in [("IP", "host", 12, 160), ("Port", "port", 230, 60), ("Interval", "interval", 340, 50)]:
-                l = NSTextField.alloc().initWithFrame_(NSMakeRect(x_off, row, 60, 18))
-                l.setStringValue_(lbl_text); l.setEditable_(False); l.setSelectable_(False)
-                l.setBezeled_(False); l.setDrawsBackground_(False)
-                l.setFont_(NSFont.systemFontOfSize_(12))
-                inner.addSubview_(l)
-                tf = NSTextField.alloc().initWithFrame_(NSMakeRect(x_off + 55, row-2, w, 22))
-                tf.setStringValue_(str(self.config.get(key, "")))
-                inner.addSubview_(tf)
-                self.fields[key] = tf
-
-            find_btn = NSButton.alloc().initWithFrame_(NSMakeRect(460, row-4, 40, 24))
-            find_btn.setTitle_("Find"); find_btn.setTarget_(self)
-            find_btn.setAction_(b"rediscover:")
-            inner.addSubview_(find_btn)
-            y += 30
-
-            # -- Pages --
-            lbl = NSTextField.alloc().initWithFrame_(NSMakeRect(10, y, inner_w-20, 20))
-            lbl.setStringValue_("Pages"); lbl.setEditable_(False); lbl.setSelectable_(False)
-            lbl.setBezeled_(False); lbl.setDrawsBackground_(False)
-            lbl.setFont_(NSFont.boldSystemFontOfSize_(14))
-            inner.addSubview_(lbl)
-            y += 22
-            table_h = 130
-            self.buildPageTable(inner, 10, y, inner_w-20, table_h)
-            y += table_h + 8
-
-            # -- API --
-            lbl = NSTextField.alloc().initWithFrame_(NSMakeRect(10, y, inner_w-20, 20))
-            lbl.setStringValue_("API & Data Sources"); lbl.setEditable_(False); lbl.setSelectable_(False)
-            lbl.setBezeled_(False); lbl.setDrawsBackground_(False)
-            lbl.setFont_(NSFont.boldSystemFontOfSize_(14))
-            inner.addSubview_(lbl)
-            y += 22
+            # ── API & Data Sources ──
+            self.addLabel(cv, "API & Data Sources", 12, y, 400, 18, 13, True)
+            y -= 22
             for title, key, secure in [
                 ("DeepSeek Key", "deepseek_key", True),
                 ("MiMo Key", "mimo_key", True),
                 ("MiMo Base", "mimo_base", False),
             ]:
-                l = NSTextField.alloc().initWithFrame_(NSMakeRect(12, y+3, 110, 18))
-                l.setStringValue_(title); l.setEditable_(False); l.setSelectable_(False)
-                l.setBezeled_(False); l.setDrawsBackground_(False)
-                l.setFont_(NSFont.systemFontOfSize_(12))
-                inner.addSubview_(l)
-                cls = NSSecureTextField if secure else NSTextField
-                tf = cls.alloc().initWithFrame_(NSMakeRect(128, y, 360, 22))
-                tf.setStringValue_(str(self.config.get(key, "")))
-                inner.addSubview_(tf)
-                self.fields[key] = tf
-                y += 28
+                self.addLabel(cv, title, 12, y+3, 100)
+                self.addTextField(cv, key, 118, y, 300, secure=secure)
+                y -= 26
 
-            y += bar_h + 10  # extra space so bottom bar area is scrollable
+            # ── Bottom bar ──
+            self.status_label = self.addLabel(cv, "Sender starting...", 12, 8, 240, 18, 11)
+            self.addButton(cv, "Save", "saveSettings:", win_w-170, 4, 72)
+            self.addButton(cv, "Close", "closeWindow:", win_w-90, 4, 72)
+            # Separator line above bottom bar
+            # (NSBox or just a thin label)
 
-            scroll.setDocumentView_(inner)
-            self._scroll_view = scroll
-
-            # ── Bottom bar overlay (fixed on top of contentView, NOT scrolled) ──
-            self.status_label = self.label("Sender starting...", 12, 10, 300, 20)
-            self.button("Save", "saveSettings:", win_w-180, 6, 80)
-            self.button("Close", "closeWindow:", win_w-88, 6, 80)
-
-        def _addLabel(self, parent, text, x, y, w=110, h=18, size=12, bold=False):
+        @objc.python_method
+        def addLabel(self, parent, text, x, y, w=110, h=18, size=12, bold=False):
             field = NSTextField.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
             field.setStringValue_(text)
             field.setEditable_(False); field.setSelectable_(False)
@@ -998,7 +949,7 @@ def run_gui_app(args):
             return field
 
         @objc.python_method
-        def _addTextField(self, parent, key, x, y, w=360, secure=False):
+        def addTextField(self, parent, key, x, y, w=360, secure=False):
             cls = NSSecureTextField if secure else NSTextField
             field = cls.alloc().initWithFrame_(NSMakeRect(x, y, w, 22))
             field.setStringValue_(str(self.config.get(key, "")))
@@ -1007,7 +958,7 @@ def run_gui_app(args):
             return field
 
         @objc.python_method
-        def _addButton(self, parent, title, action, x, y, w=60, h=24):
+        def addButton(self, parent, title, action, x, y, w=60, h=24):
             btn = NSButton.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
             btn.setTitle_(title); btn.setTarget_(self); btn.setAction_(action)
             parent.addSubview_(btn)
