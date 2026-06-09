@@ -378,6 +378,7 @@ def get_clash():
     if conns:
         d["active_connections"] = len(conns.get("connections", []))
 
+    d["update_time"] = datetime.datetime.now().strftime("%H:%M:%S")
     _clash_cache = {"ts": now, "data": d}
     return d
 

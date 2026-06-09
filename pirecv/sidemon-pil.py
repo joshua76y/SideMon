@@ -19,40 +19,47 @@ def ff(name, size):
     return ImageFont.load_default()
 
 F = {}
-for s in [10,11,12,13,14,16,18,20,22,24,26,28,30,32,36,40,48]:
+for s in [9,10,11,12,13,14,16,18,20,22,24,26,28,30,32,36,40,48]:
     F["r"+str(s)] = ff("r", s)
     F["b"+str(s)] = ff("b", s)
 
 # ══════════════════════════════════════════════════════════════════════
-# Design System
+# Design System — Bold, vibrant, commercial-grade
 # ══════════════════════════════════════════════════════════════════════
 
-# Base palette — dark charcoal with warm undertone
-BG = (14, 16, 22)
-PN = (22, 24, 32)
-CARD = (28, 30, 40)
-CARD_B = (34, 36, 48)
-BORDER = (48, 50, 62)
-DIVIDER = (42, 44, 56)
+# Dark base
+BG = (12, 14, 20)
+PN = (20, 22, 30)
+CARD = (26, 28, 38)
+BORDER = (44, 46, 58)
+DIVIDER = (38, 40, 52)
 
-# Text hierarchy
-TX = (230, 232, 240)      # primary — bright white
-TX2 = (160, 164, 180)     # secondary — mid gray
-TX3 = (100, 104, 120)     # tertiary — dim
+# Text
+TX = (240, 242, 248)
+TX2 = (168, 172, 188)
+TX3 = (100, 104, 120)
 
-# Page accent colors (muted, sophisticated)
+# === Bold page accent colors ===
 AC = {
-    "sys":   (100, 190, 155),   # sage green
-    "api":   (90, 170, 230),    # steel blue
-    "clash": (220, 140, 70),    # amber
-    "codex": (165, 120, 240),   # lavender
-    "wthr":  (235, 185, 80),    # warm gold
-    "dt":    (120, 180, 240),   # sky blue
-    "omlx":  (110, 200, 120),   # emerald
+    "sys":   (0, 210, 140),     # vivid emerald
+    "api":   (50, 160, 255),    # electric blue
+    "clash": (255, 160, 50),    # hot orange
+    "codex": (170, 100, 255),   # vivid purple
+    "wthr":  (255, 200, 50),    # bright gold
+    "dt":    (80, 200, 255),    # cyan
+    "omlx":  (80, 220, 110),    # lime green
 }
 
-# Accent card backgrounds (very desaturated version of accent)
-AC_BG = {k: (v[0]//10+14, v[1]//10+14, v[2]//10+18) for k, v in AC.items()}
+# === Page-specific background tints ===
+PAGE_BG = {
+    "sys":   (10, 18, 22),      # teal tint
+    "api":   (10, 14, 26),      # blue tint
+    "clash": (22, 16, 10),      # warm tint
+    "codex": (18, 12, 26),      # purple tint
+    "wthr":  (22, 20, 10),      # gold tint
+    "dt":    (10, 18, 24),      # cyan tint
+    "omlx":  (10, 20, 14),      # green tint
+}
 
 state = {}; lock = threading.Lock()
 
@@ -61,58 +68,56 @@ state = {}; lock = threading.Lock()
 # ══════════════════════════════════════════════════════════════════════
 
 def rr(d, xy, r, fill):
-    """Rounded rectangle."""
     d.rounded_rectangle(xy, radius=r, fill=fill)
 
-def card(d, x, y, w, h, fill=None):
-    """Card with subtle border."""
+def card(d, x, y, w, h, fill=None, radius=6):
     f = fill or CARD
-    rr(d, (x, y, x+w, y+h), 8, f)
-    # top highlight line
-    d.line((x+8, y, x+w-8, y), fill=(f[0]+12, f[1]+12, f[2]+12), width=1)
+    rr(d, (x, y, x+w, y+h), radius, f)
 
-def arc_g(d, cx, cy, r, pct, fg, bg=None):
-    """Clean arc gauge — thin ring style."""
-    if bg is None: bg = BORDER
-    d.ellipse((cx-r, cy-r, cx+r, cy+r), outline=bg, width=6)
+def arc_g(d, cx, cy, r, pct, fg, width=10):
+    """Bold arc gauge with thick ring."""
+    bg = BORDER
+    d.ellipse((cx-r, cy-r, cx+r, cy+r), outline=bg, width=width)
     if pct > 0.005:
         s, e = 225, 225 - 360*min(pct, 1)
         if e < 0: e += 360
-        d.arc((cx-r, cy-r, cx+r, cy+r), s, e, fill=fg, width=6)
+        d.arc((cx-r, cy-r, cx+r, cy+r), s, e, fill=fg, width=width)
 
-def bar(d, x, y, w, h, pct, fg):
-    """Progress bar with rounded ends."""
-    rr(d, (x, y, x+w, y+h), h//2, BORDER)
+def bar(d, x, y, w, h, pct, fg, radius=None):
+    if radius is None: radius = h//2
+    rr(d, (x, y, x+w, y+h), radius, BORDER)
     fw = max(4, int(w * min(pct, 1)))
     if fw > h:
-        rr(d, (x, y, x+fw, y+h), h//2, fg)
+        rr(d, (x, y, x+fw, y+h), radius, fg)
 
 def ct(d, y, text, fill, fk):
-    """Center text."""
     tw = d.textlength(text, font=F[fk])
     d.text(((W-tw)//2, y), text, fill=fill, font=F[fk])
 
-def hdr(d, title, accent):
-    """Page header — accent line on left + title."""
-    d.rectangle((0, 0, W, 36), fill=PN)
-    d.rectangle((0, 0, 3, 36), fill=accent)
-    d.text((14, 8), title, fill=accent, font=F["b18"])
+def hdr(d, title, accent, bg_tint=None):
+    """Page header with colored accent bar."""
+    hdr_bg = bg_tint or PN
+    d.rectangle((0, 0, W, 34), fill=hdr_bg)
+    # Left accent stripe
+    d.rectangle((0, 0, 4, 34), fill=accent)
+    d.text((14, 7), title, fill=accent, font=F["b18"])
 
-def nav(d, cur, total):
-    """Bottom navigation — thin line + page numbers."""
-    d.rectangle((0, H-18, W, H), fill=PN)
-    d.line((0, H-18, W, H-18), fill=DIVIDER, width=1)
-    # page numbers centered
-    nums = "  ".join([str(i+1) for i in range(total)])
-    tw = d.textlength(nums, font=F["r10"])
-    sx = (W - tw) // 2
-    x = sx
+def nav(d, cur, total, accent):
+    """Bottom navigation with colored dot."""
+    d.rectangle((0, H-16, W, H), fill=PN)
+    d.line((0, H-16, W, H-16), fill=DIVIDER, width=1)
+    # Dots
+    dot_r = 3
+    spacing = 14
+    total_w = total * spacing
+    sx = (W - total_w) // 2
     for i in range(total):
-        ch = str(i+1)
-        cw = d.textlength(ch, font=F["r10"])
-        col = AC["sys"] if i == cur else TX3  # accent color for current
-        d.text((x, H-14), ch, fill=col, font=F["r10"])
-        x += cw + d.textlength("  ", font=F["r10"])
+        cx = sx + i * spacing + dot_r
+        cy = H - 9
+        if i == cur:
+            d.ellipse((cx-dot_r, cy-dot_r, cx+dot_r, cy+dot_r), fill=accent)
+        else:
+            d.ellipse((cx-dot_r, cy-dot_r, cx+dot_r, cy+dot_r), fill=DIVIDER)
 
 def fmt_tk(n):
     if n >= 1e9: return f"{n/1e9:.1f}B"
@@ -129,85 +134,88 @@ def fmtb(n):
 TOTAL_PAGES = 7
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 1: System
+# Page 1: System — thick gauges, teal background
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_system(s):
-    img = Image.new("RGBA", (W, H), BG)
+    bg = PAGE_BG["sys"]
+    img = Image.new("RGBA", (W, H), bg)
     d = ImageDraw.Draw(img)
     ac = AC["sys"]
-    hdr(d, "SYSTEM", ac)
+    hdr(d, "SYSTEM", ac, bg)
 
-    # Three arc gauges — centered, well-spaced
-    gy = 110
+    # Three thick arc gauges — different sizes
+    gy = 108
     positions = [80, 240, 400]
     gauges = [
-        (s.get("cpu",0)/100,  AC["sys"],  "CPU",  f"{int(s.get('cpu',0))}%"),
-        (s.get("mem",0)/100,  AC["api"],  "MEM",  f"{int(s.get('mem',0))}%"),
-        (s.get("disk",0)/100, AC["clash"], "DISK", f"{int(s.get('disk',0))}%"),
+        (s.get("cpu",0)/100,  AC["sys"],  "CPU",  f"{int(s.get('cpu',0))}%", 40, 12),
+        (s.get("mem",0)/100,  AC["api"],  "MEM",  f"{int(s.get('mem',0))}%", 36, 10),
+        (s.get("disk",0)/100, AC["clash"], "DISK", f"{int(s.get('disk',0))}%", 32, 8),
     ]
-    for i, (pct, color, label, val) in enumerate(gauges):
+    for i, (pct, color, label, val, radius, w_) in enumerate(gauges):
         x = positions[i]
-        arc_g(d, x, gy, 38, min(pct, 1), color)
-        # value centered in arc
+        arc_g(d, x, gy, radius, min(pct, 1), color, width=w_)
+        # Value centered
         tw = d.textlength(val, font=F["b20"])
         d.text((x - tw//2, gy - 12), val, fill=TX, font=F["b20"])
-        # label below
+        # Label below
         tw2 = d.textlength(label, font=F["r11"])
-        d.text((x - tw2//2, gy + 44), label, fill=TX3, font=F["r11"])
+        d.text((x - tw2//2, gy + radius + 10), label, fill=color, font=F["r11"])
 
     # Bottom info row
-    by = 180
+    by = 184
+    cw = (W - 30) // 3
     # Uptime
-    card(d, 10, by, 148, 54)
-    d.text((20, by+6), "UPTIME", fill=TX3, font=F["r10"])
-    d.text((20, by+24), s.get("uptime","?"), fill=ac, font=F["b20"])
+    card(d, 10, by, cw, 52)
+    d.text((18, by+6), "UPTIME", fill=TX3, font=F["r10"])
+    d.text((18, by+24), s.get("uptime","?"), fill=ac, font=F["b18"])
 
     # Load
-    card(d, 168, by, 148, 54)
-    d.text((178, by+6), "LOAD", fill=TX3, font=F["r10"])
+    card(d, 20+cw, by, cw, 52)
     ld = s.get("load",[0,0,0])
-    d.text((178, by+24), f"{ld[0]:.1f}  {ld[1]:.1f}", fill=TX2, font=F["b18"])
+    d.text((28+cw, by+6), "LOAD", fill=TX3, font=F["r10"])
+    d.text((28+cw, by+24), f"{ld[0]:.1f}  {ld[1]:.1f}", fill=TX2, font=F["b18"])
 
     # Hostname
-    card(d, 326, by, 144, 54)
-    d.text((336, by+6), "HOST", fill=TX3, font=F["r10"])
+    card(d, 30+2*cw, by, cw, 52)
     hn = s.get("hostname","?")
-    if len(hn) > 16: hn = hn[:14]+".."
-    d.text((336, by+24), hn, fill=TX2, font=F["b14"])
+    if len(hn) > 14: hn = hn[:12]+".."
+    d.text((38+2*cw, by+6), "HOST", fill=TX3, font=F["r10"])
+    d.text((38+2*cw, by+24), hn, fill=TX2, font=F["b14"])
 
-    nav(d, 0, TOTAL_PAGES)
+    nav(d, 0, TOTAL_PAGES, ac)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 2: API Usage — horizontal bars
+# Page 2: API Usage — blue tint
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_apis(api):
-    img = Image.new("RGBA", (W, H), BG)
+    bg = PAGE_BG["api"]
+    img = Image.new("RGBA", (W, H), bg)
     d = ImageDraw.Draw(img)
     ac = AC["api"]
-    hdr(d, "API USAGE", ac)
+    hdr(d, "API USAGE", ac, bg)
 
     # Two balance bars
-    y0 = 48
+    y0 = 44
     for i, (label, key, color) in enumerate([
         ("DeepSeek", "ds_balance", AC["api"]),
         ("MiMo", "mm_balance", AC["codex"]),
     ]):
-        by = y0 + i * 70
-        card(d, 10, by, W-20, 58)
+        by = y0 + i * 68
+        card(d, 10, by, W-20, 54)
         d.text((20, by+6), label, fill=color, font=F["b14"])
         bal = api.get(key, "?")
         try: val = float(bal)
         except: val = 0
         pct = min(val / 50.0, 1.0) if val > 0 else 0
-        bar(d, 20, by+28, W-180, 12, pct, color)
-        vs = f"{val:.1f}" if isinstance(val, float) else str(val)
-        d.text((W-140, by+22), f"CNY {vs}", fill=TX, font=F["b16"])
+        bar(d, 20, by+28, W-180, 12, pct, color, radius=6)
+        vs = f"CNY {val:.1f}" if isinstance(val, float) else str(val)
+        d.text((W-140, by+22), vs, fill=TX, font=F["b16"])
 
     # 3 stat cards
-    y1 = 192
+    y1 = 188
     cw = (W - 40) // 3
     items = [
         ("TOTAL", fmt_tk(api.get("total_tokens",0)), TX),
@@ -216,89 +224,106 @@ def pg_apis(api):
     ]
     for i, (lbl, val, col) in enumerate(items):
         x = 10 + i * (cw + 10)
-        card(d, x, y1, cw, 64)
-        d.text((x+10, y1+10), lbl, fill=TX3, font=F["r10"])
-        d.text((x+10, y1+32), val, fill=col, font=F["b22"])
+        card(d, x, y1, cw, 60)
+        d.text((x+10, y1+8), lbl, fill=TX3, font=F["r10"])
+        d.text((x+10, y1+28), val, fill=col, font=F["b22"])
 
-    nav(d, 1, TOTAL_PAGES)
+    nav(d, 1, TOTAL_PAGES, ac)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 3: Clash
+# Page 3: Clash — warm orange, full info
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_clash(cl):
-    img = Image.new("RGBA", (W, H), BG)
+    bg = PAGE_BG["clash"]
+    img = Image.new("RGBA", (W, H), bg)
     d = ImageDraw.Draw(img)
     ac = AC["clash"]
-    hdr(d, "CLASH", ac)
+    hdr(d, "CLASH VERGE", ac, bg)
 
+    # Status badge
     st = "ONLINE" if cl.get("running") else "OFFLINE"
-    st_col = AC["sys"] if cl.get("running") else AC["clash"]
-    tw_st = d.textlength(st, font=F["r11"])
-    d.text((W-14-tw_st, 12), st, fill=st_col, font=F["r11"])
+    st_col = AC["sys"] if cl.get("running") else (220, 80, 80)
+    badge_w = d.textlength(st, font=F["b11"]) + 16
+    rr(d, (W-14-badge_w, 8, W-14, 26), 4, st_col)
+    d.text((W-14-badge_w+8, 9), st, fill=BG, font=F["b11"])
 
-    # Node card
+    # Current node
     node = cl.get("current_node", "?")
-    if len(node) > 28: node = node[:26]+".."
-    card(d, 10, 44, W-20, 44)
-    d.text((20, 48), "NODE", fill=TX3, font=F["r10"])
-    d.text((20, 64), node, fill=TX, font=F["b16"])
+    if len(node) > 26: node = node[:24]+".."
+    card(d, 10, 40, W-20, 40)
+    d.text((20, 44), "NODE", fill=TX3, font=F["r10"])
+    d.text((80, 42), node, fill=TX, font=F["b16"])
 
-    # Traffic
-    y0 = 98
+    # Traffic bar
+    y0 = 88
+    card(d, 10, y0, W-20, 44)
     tu = cl.get("traffic_used", "")
     tt = cl.get("traffic_total", "")
-    card(d, 10, y0, W-20, 44)
     d.text((20, y0+6), "TRAFFIC", fill=TX3, font=F["r10"])
     if tu and tt:
-        d.text((20, y0+24), f"{tu} / {tt}", fill=TX, font=F["b16"])
+        d.text((20, y0+24), f"{tu} / {tt}", fill=TX, font=F["b14"])
         try:
             num = float(''.join(c for c in tu.split()[0] if c.isdigit() or c=='.'))
             den = float(''.join(c for c in tt.split()[0] if c.isdigit() or c=='.'))
             tp = num/den if den > 0 else 0
         except: tp = 0
-        bar(d, W-180, y0+26, 150, 8, tp, ac)
+        bar(d, W-180, y0+26, 150, 10, tp, ac, radius=5)
     else:
         d.text((20, y0+24), "N/A", fill=TX3, font=F["r14"])
 
     # Upload + Download
-    y1 = 152
+    y1 = 140
     hw = (W-30)//2
-    card(d, 10, y1, hw, 48)
-    d.text((20, y1+6), "UPLOAD", fill=TX3, font=F["r10"])
-    d.text((20, y1+24), fmtb(cl.get("upload_total",0)), fill=AC["api"], font=F["b18"])
+    card(d, 10, y1, hw, 44)
+    d.text((20, y1+6), "UPLOAD", fill=AC["api"], font=F["r10"])
+    d.text((20, y1+22), fmtb(cl.get("upload_total",0)), fill=AC["api"], font=F["b18"])
 
-    card(d, 20+hw, y1, hw, 48)
-    d.text((30+hw, y1+6), "DOWNLOAD", fill=TX3, font=F["r10"])
-    d.text((30+hw, y1+24), fmtb(cl.get("download_total",0)), fill=AC["clash"], font=F["b18"])
+    card(d, 20+hw, y1, hw, 44)
+    d.text((30+hw, y1+6), "DOWNLOAD", fill=ac, font=F["r10"])
+    d.text((30+hw, y1+22), fmtb(cl.get("download_total",0)), fill=ac, font=F["b18"])
 
-    # Expire + Mode
-    y2 = 210
-    card(d, 10, y2, hw, 42)
-    d.text((20, y2+6), "EXPIRE", fill=TX3, font=F["r10"])
+    # Expire + Mode + Connections (3 columns)
+    y2 = 192
+    cw3 = (W-40)//3
+    card(d, 10, y2, cw3, 44)
+    d.text((18, y2+6), "EXPIRE", fill=TX3, font=F["r10"])
     exp = cl.get("expire_date", "") or "N/A"
-    d.text((20, y2+22), exp, fill=AC["wthr"], font=F["b14"])
+    if len(exp) > 14: exp = exp[:12]+".."
+    d.text((18, y2+22), exp, fill=AC["wthr"], font=F["b13"])
 
-    card(d, 20+hw, y2, hw, 42)
-    d.text((30+hw, y2+6), "MODE", fill=TX3, font=F["r10"])
-    d.text((30+hw, y2+22), cl.get("mode","Rule"), fill=AC["codex"], font=F["b14"])
+    card(d, 20+cw3, y2, cw3, 44)
+    d.text((28+cw3, y2+6), "MODE", fill=TX3, font=F["r10"])
+    d.text((28+cw3, y2+22), cl.get("mode","Rule"), fill=AC["codex"], font=F["b13"])
 
-    nav(d, 2, TOTAL_PAGES)
+    card(d, 30+2*cw3, y2, cw3, 44)
+    d.text((38+2*cw3, y2+6), "CONNS", fill=TX3, font=F["r10"])
+    d.text((38+2*cw3, y2+22), str(cl.get("active_connections",0)), fill=TX, font=F["b18"])
+
+    # Updated time
+    y3 = 244
+    upd = cl.get("update_time", "")
+    if upd:
+        card(d, 10, y3, W-20, 30)
+        d.text((20, y3+8), f"Updated: {upd}", fill=TX3, font=F["r10"])
+
+    nav(d, 2, TOTAL_PAGES, ac)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 4: Codex — percentage gauges
+# Page 4: Codex — purple tint, big percentage gauges
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_codex(cx):
-    img = Image.new("RGBA", (W, H), BG)
+    bg = PAGE_BG["codex"]
+    img = Image.new("RGBA", (W, H), bg)
     d = ImageDraw.Draw(img)
     ac = AC["codex"]
-    hdr(d, "CODEX", ac)
+    hdr(d, "CODEX", ac, bg)
 
-    # Two large percentage arc gauges
-    gy = 115
+    # Two large percentage arc gauges — thick
+    gy = 112
     for i, (label, key, mx, color) in enumerate([
         ("5 Hour", "tokens_5h", 2_000_000, AC["codex"]),
         ("7 Day", "tokens_7d", 10_000_000, AC["api"]),
@@ -307,113 +332,115 @@ def pg_codex(cx):
         tok = cx.get(key, 0)
         pct = min(tok/mx, 1.0) if tok > 0 else 0
         pct_int = int(pct * 100)
-        arc_g(d, x, gy, 46, pct, color)
-        # Large percentage
+        arc_g(d, x, gy, 50, pct, color, width=14)
+        # Large percentage in center
         vs = f"{pct_int}%"
-        tw = d.textlength(vs, font=F["b32"])
-        d.text((x-tw//2, gy-20), vs, fill=color, font=F["b32"])
+        tw = d.textlength(vs, font=F["b36"])
+        d.text((x-tw//2, gy-22), vs, fill=color, font=F["b36"])
         # Token count small
         ts = fmt_tk(tok)
         tw2 = d.textlength(ts, font=F["r10"])
-        d.text((x-tw2//2, gy+18), ts, fill=TX3, font=F["r10"])
+        d.text((x-tw2//2, gy+22), ts, fill=TX3, font=F["r10"])
         # Label
-        tw3 = d.textlength(label, font=F["r12"])
-        d.text((x-tw3//2, gy+50), label, fill=TX2, font=F["r12"])
+        tw3 = d.textlength(label, font=F["r13"])
+        d.text((x-tw3//2, gy+56), label, fill=TX2, font=F["r13"])
 
     # Model + Reset
     y0 = 196
-    card(d, 10, y0, W-20, 36)
+    card(d, 10, y0, W-20, 34)
     d.text((20, y0+8), "MODEL", fill=TX3, font=F["r10"])
     model = cx.get("model", "?")
     if len(model) > 28: model = model[:26]+".."
     d.text((80, y0+8), model, fill=ac, font=F["b14"])
 
-    y1 = 240
+    y1 = 238
     card(d, 10, y1, W-20, 30)
-    d.text((20, y1+5), "RESET", fill=TX3, font=F["r10"])
-    d.text((80, y1+4), cx.get("reset_time","?"), fill=AC["wthr"], font=F["r12"])
+    d.text((20, y1+6), "RESET", fill=TX3, font=F["r10"])
+    d.text((80, y1+5), cx.get("reset_time","?"), fill=AC["wthr"], font=F["r12"])
 
-    nav(d, 3, TOTAL_PAGES)
+    nav(d, 3, TOTAL_PAGES, ac)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 5: Weather
+# Page 5: Weather — gold tint
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_weather(w):
-    img = Image.new("RGBA", (W, H), BG)
+    bg = PAGE_BG["wthr"]
+    img = Image.new("RGBA", (W, H), bg)
     d = ImageDraw.Draw(img)
     ac = AC["wthr"]
-    hdr(d, "WEATHER", ac)
+    hdr(d, "WEATHER", ac, bg)
 
     hw = (W-30)//2
 
     # Temperature (left) + Condition (right)
     temp_c = w.get("temp_c", 0)
     tc = AC["wthr"] if temp_c < 30 else AC["clash"]
-    card(d, 10, 44, hw, 70)
-    d.text((20, 48), "TEMP", fill=TX3, font=F["r10"])
-    d.text((20, 66), f"{int(temp_c)}°C", fill=TX, font=F["b30"])
-    d.text((20, 100), w.get("city","?"), fill=TX3, font=F["r10"])
+    card(d, 10, 40, hw, 68)
+    d.text((20, 44), "TEMP", fill=TX3, font=F["r10"])
+    d.text((20, 60), f"{int(temp_c)}°C", fill=TX, font=F["b30"])
+    d.text((20, 96), w.get("city","?"), fill=TX3, font=F["r10"])
 
     cond = w.get("condition", "?")
     if len(cond) > 16: cond = cond[:14]+".."
-    card(d, 20+hw, 44, hw, 70)
-    d.text((30+hw, 48), "CONDITION", fill=TX3, font=F["r10"])
-    d.text((30+hw, 66), cond, fill=TX, font=F["b16"])
+    card(d, 20+hw, 40, hw, 68)
+    d.text((30+hw, 44), "CONDITION", fill=TX3, font=F["r10"])
+    d.text((30+hw, 64), cond, fill=TX, font=F["b16"])
     fl = w.get("feels_like_c", temp_c)
-    d.text((30+hw, 90), f"Feels {int(fl)}°C", fill=TX3, font=F["r10"])
+    d.text((30+hw, 88), f"Feels {int(fl)}°C", fill=TX3, font=F["r10"])
 
     # Humidity + Wind
-    y0 = 124
-    card(d, 10, y0, hw, 40)
+    y0 = 116
+    card(d, 10, y0, hw, 38)
     d.text((20, y0+4), "HUMIDITY", fill=TX3, font=F["r10"])
-    d.text((20, y0+20), f"{w.get('humidity',0)}%", fill=AC["api"], font=F["b16"])
+    d.text((20, y0+18), f"{w.get('humidity',0)}%", fill=AC["api"], font=F["b16"])
 
-    card(d, 20+hw, y0, hw, 40)
+    card(d, 20+hw, y0, hw, 38)
     d.text((30+hw, y0+4), "WIND", fill=TX3, font=F["r10"])
-    d.text((30+hw, y0+20), f"{w.get('wind_kph',0)} km/h", fill=TX2, font=F["b16"])
+    d.text((30+hw, y0+18), f"{w.get('wind_kph',0)} km/h", fill=TX2, font=F["b16"])
 
     # 3-day forecast
-    y1 = 174
+    y1 = 162
     forecasts = w.get("forecast", [])[:3]
     fw = (W-40)//3
     for i, fc in enumerate(forecasts):
         fx = 10 + i*(fw+5)
-        card(d, fx, y1, fw, 58)
+        card(d, fx, y1, fw, 54)
         day = fc.get("day","?")[:3]
         d.text((fx+8, y1+4), day, fill=TX3, font=F["r10"])
         hi = fc.get("high_c","?")
         lo = fc.get("low_c","?")
-        d.text((fx+8, y1+22), f"{hi}°", fill=AC["clash"], font=F["b16"])
-        d.text((fx+56, y1+22), f"{lo}°", fill=AC["api"], font=F["b16"])
+        d.text((fx+8, y1+18), f"{hi}°", fill=AC["clash"], font=F["b16"])
+        d.text((fx+56, y1+18), f"{lo}°", fill=AC["api"], font=F["b16"])
         c2 = fc.get("condition","?")
         if len(c2) > 12: c2 = c2[:10]+".."
-        d.text((fx+8, y1+42), c2, fill=TX2, font=F["r9"])
+        d.text((fx+8, y1+38), c2, fill=TX2, font=F["r9"])
 
     # Sunrise + UV
-    y2 = 242
+    y2 = 224
     card(d, 10, y2, hw, 32)
-    d.text((20, y2+8), "SUN  ", fill=TX3, font=F["r10"])
-    d.text((60, y2+6), f"{w.get('sunrise','?')}", fill=ac, font=F["r12"])
+    d.text((20, y2+8), "SUN", fill=TX3, font=F["r10"])
+    d.text((56, y2+6), f"{w.get('sunrise','?')}", fill=ac, font=F["r12"])
     d.text((140, y2+6), f"{w.get('sunset','?')}", fill=ac, font=F["r12"])
 
     card(d, 20+hw, y2, hw, 32)
     d.text((30+hw, y2+8), "UV", fill=TX3, font=F["r10"])
     d.text((60+hw, y2+5), str(w.get("uv_index","?")), fill=AC["clash"], font=F["b16"])
 
-    nav(d, 4, TOTAL_PAGES)
+    nav(d, 4, TOTAL_PAGES, ac)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 6: DateTime
+# Page 6: DateTime — cyan tint, calendar
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_datetime(dt_data):
-    img = Image.new("RGBA", (W, H), BG)
+    bg = PAGE_BG["dt"]
+    img = Image.new("RGBA", (W, H), bg)
     d = ImageDraw.Draw(img)
     ac = AC["dt"]
-    hdr(d, "DATETIME", ac)
+    hdr(d, "DATETIME", ac, bg)
 
     ts = dt_data.get("timestamp", 0)
     if ts > 0:
@@ -424,25 +451,24 @@ def pg_datetime(dt_data):
         now = datetime.now()
 
     # Time (left) + Date info (right)
-    card(d, 10, 44, 200, 84)
+    card(d, 10, 40, 200, 80)
     time_str = now.strftime("%H:%M")
     tw = d.textlength(time_str, font=F["b48"])
-    d.text((10+(200-tw)//2, 48), time_str, fill=TX, font=F["b48"])
-    # Seconds
+    d.text((10+(200-tw)//2, 42), time_str, fill=TX, font=F["b48"])
     sec_str = now.strftime("%S")
-    d.text((10+(200-d.textlength(sec_str,font=F["b22"]))//2, 100), sec_str, fill=TX3, font=F["b22"])
+    d.text((10+(200-d.textlength(sec_str,font=F["b22"]))//2, 96), sec_str, fill=TX3, font=F["b22"])
 
-    card(d, 220, 44, 250, 84)
+    card(d, 220, 40, 250, 80)
     date_str = now.strftime("%Y-%m-%d")
-    d.text((230, 50), date_str, fill=TX2, font=F["b18"])
+    d.text((230, 46), date_str, fill=TX2, font=F["b18"])
     dow = now.strftime("%A")
-    d.text((230, 74), dow, fill=ac, font=F["r14"])
+    d.text((230, 70), dow, fill=ac, font=F["r14"])
     tz = now.strftime("UTC%z")
-    d.text((230, 96), tz, fill=TX3, font=F["r11"])
+    d.text((230, 92), tz, fill=TX3, font=F["r11"])
 
     # Calendar
-    y0 = 140
-    card(d, 10, y0, W-20, 140)
+    y0 = 132
+    card(d, 10, y0, W-20, 148)
     month_str = now.strftime("%B %Y")
     tw = d.textlength(month_str, font=F["b12"])
     d.text(((W-tw)//2, y0+4), month_str, fill=ac, font=F["b12"])
@@ -468,74 +494,61 @@ def pg_datetime(dt_data):
                 col = AC["api"] if di >= 5 else TX2
                 d.text((dx, dy), f"{day:2d}", fill=col, font=F["r10"])
 
-    nav(d, 5, TOTAL_PAGES)
+    nav(d, 5, TOTAL_PAGES, ac)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 7: omLX
+# Page 7: oMLX — green tint, no model list
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_omlx(om):
-    img = Image.new("RGBA", (W, H), BG)
+    bg = PAGE_BG["omlx"]
+    img = Image.new("RGBA", (W, H), bg)
     d = ImageDraw.Draw(img)
     ac = AC["omlx"]
-    hdr(d, "OMLX", ac)
+    hdr(d, "OMLX", ac, bg)
 
+    # Status badge
     st = "ONLINE" if om.get("running") else "OFFLINE"
-    st_col = AC["sys"] if om.get("running") else AC["clash"]
-    tw_st = d.textlength(st, font=F["r11"])
-    d.text((W-14-tw_st, 12), st, fill=st_col, font=F["r11"])
+    st_col = AC["sys"] if om.get("running") else (220, 80, 80)
+    badge_w = d.textlength(st, font=F["b11"]) + 16
+    rr(d, (W-14-badge_w, 8, W-14, 26), 4, st_col)
+    d.text((W-14-badge_w+8, 9), st, fill=BG, font=F["b11"])
 
     # Memory bar
-    card(d, 10, 44, W-20, 48)
+    card(d, 10, 40, W-20, 48)
     mem_u = om.get("memory_used", 0)
     mem_c = om.get("memory_ceiling", 1)
     mem_p = mem_u/mem_c if mem_c > 0 else 0
-    d.text((20, 48), "MEMORY", fill=TX3, font=F["r10"])
-    d.text((110, 48), f"{mem_u:.1f} / {mem_c:.1f} GB", fill=TX2, font=F["b14"])
-    bar(d, 20, 70, W-40, 10, mem_p, ac)
+    d.text((20, 44), "MEMORY", fill=TX3, font=F["r10"])
+    d.text((110, 44), f"{mem_u:.1f} / {mem_c:.1f} GB", fill=TX2, font=F["b14"])
+    bar(d, 20, 66, W-40, 10, mem_p, ac, radius=5)
 
-    # 4 stat boxes (2x2)
-    y0 = 102
+    # 4 stat boxes (2x2) — larger
+    y0 = 98
     hw = (W-30)//2
     stats = [
         ("MODELS", f"{om.get('loaded_count',0)} / {om.get('model_count',0)}", ac),
         ("REQUESTS", fmt_tk(om.get("total_requests",0)), TX),
         ("PROMPT", f"{om.get('avg_prompt_speed',0):.1f} tk/s", AC["api"]),
-        ("GEN", f"{om.get('avg_gen_speed',0):.1f} tk/s", AC["wthr"]),
+        ("GENERATION", f"{om.get('avg_gen_speed',0):.1f} tk/s", AC["wthr"]),
     ]
     for i, (lbl, val, col) in enumerate(stats):
         x = 10 + (i%2)*(hw+10)
-        y = y0 + (i//2)*44
-        card(d, x, y, hw, 38)
+        y = y0 + (i//2)*48
+        card(d, x, y, hw, 42)
         d.text((x+10, y+4), lbl, fill=TX3, font=F["r10"])
-        d.text((x+10, y+20), val, fill=col, font=F["b14"])
+        d.text((x+10, y+22), val, fill=col, font=F["b18"])
 
     # Cache bar
-    y1 = 194
+    y1 = 200
     ce = om.get("cache_efficiency", 0)*100
-    card(d, 10, y1, W-20, 28)
-    d.text((20, y1+6), "CACHE", fill=TX3, font=F["r10"])
-    bar(d, 74, y1+8, W-140, 10, ce/100, ac)
-    d.text((W-58, y1+5), f"{ce:.0f}%", fill=ac, font=F["r10"])
+    card(d, 10, y1, W-20, 48)
+    d.text((20, y1+6), "CACHE EFFICIENCY", fill=TX3, font=F["r10"])
+    d.text((20, y1+24), f"{ce:.1f}%", fill=ac, font=F["b22"])
+    bar(d, 160, y1+28, W-200, 12, ce/100, ac, radius=6)
 
-    # Top 3 models
-    y2 = 230
-    top = om.get("top_models", [])[:3]
-    if top:
-        max_tk = max((m.get("tk_total",1) for m in top), default=1)
-        colors = [ac, AC["api"], AC["wthr"]]
-        for i, m in enumerate(top):
-            by = y2 + i*20
-            tk = m.get("tk_total",0)
-            pct = tk/max_tk if max_tk>0 else 0
-            nm = m.get("name","?")
-            if len(nm) > 22: nm = nm[:20]+".."
-            d.text((14, by+2), nm, fill=TX3, font=F["r10"])
-            bar(d, 140, by+3, W-194, 10, pct, colors[i%3])
-            d.text((W-46, by), fmt_tk(tk), fill=TX2, font=F["r10"])
-
-    nav(d, 6, TOTAL_PAGES)
+    nav(d, 6, TOTAL_PAGES, ac)
     return img
 
 
@@ -558,14 +571,19 @@ def normalize_page_order(pages):
             order.append(p); seen.add(p)
     return order or list(DEFAULT_ORDER)
 
+# ══════════════════════════════════════════════════════════════════════
+# Network
+# ══════════════════════════════════════════════════════════════════════
+
 def get_local_ips():
     ips = []
     try:
-        import fcntl, struct, socket as _s
-        for ifn in ["wlan0", "eth0"]:
+        import struct, fcntl
+        for ifn in ['wlan0', 'eth0', 'en0']:
             try:
-                s = _s.socket(_s.AF_INET, _s.SOCK_DGRAM)
-                ip = _s.inet_ntoa(fcntl.ioctl(s.fileno(), 0x8915, struct.pack('256s', ifn[:15].encode()))[20:24])
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                ip = socket.inet_ntoa(fcntl.ioctl(
+                    s.fileno(), 0x8915, struct.pack('256s', ifn[:15].encode()))[20:24])
                 ips.append(ip)
             except: pass
             finally: s.close()
@@ -584,9 +602,9 @@ def write_fb(path, img):
 def show_waiting(fb_dev):
     img = Image.new("RGBA", (W, H), BG)
     d = ImageDraw.Draw(img)
-    d.rectangle((0, 0, W, 36), fill=PN)
-    d.rectangle((0, 0, 3, 36), fill=AC["sys"])
-    d.text((14, 8), "SIDEMON", fill=AC["sys"], font=F["b18"])
+    d.rectangle((0, 0, W, 34), fill=PN)
+    d.rectangle((0, 0, 4, 34), fill=AC["sys"])
+    d.text((14, 7), "SIDEMON", fill=AC["sys"], font=F["b18"])
     ct(d, H//2-40, "Waiting...", TX3, "b20")
     ct(d, H//2, waiting_ip_text(), TX, "b18")
     ct(d, H//2+24, "Mac -> Pi", TX3, "r12")
