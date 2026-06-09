@@ -835,26 +835,51 @@ def run_gui_app(args):
             mask = (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
             self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, 720, 780), mask, NSBackingStoreBuffered, False
+                NSMakeRect(0, 0, 680, 520), mask, NSBackingStoreBuffered, False
             )
             self.window.setTitle_("RpiZeroMon Settings")
             self.window.setReleasedWhenClosed_(False)
             self.window.setDelegate_(self)
-            self.window.setContentMinSize_(NSMakeSize(720, 780))
+            self.window.setMinSize_(NSMakeSize(400, 300))
             self.window.center()
 
-            self.label("Display", 24, 732, 200, 24, 16, True)
-            self.label("IP", 32, 696, 80); self.textField("host", 110, 692, 210)
-            self.label("Port", 340, 696, 50); self.textField("port", 390, 692, 80)
-            self.label("Interval", 490, 696, 70); self.textField("interval", 560, 692, 60)
-            self.button("Find", "rediscover:", 626, 690, 70)
+            # Bottom bar (fixed, not scrolled)
+            self.status_label = self.label("Sender starting...", 24, 14, 400, 20)
+            self.button("Save", "saveSettings:", 476, 10, 86)
+            self.button("Close", "closeWindow:", 576, 10, 86)
 
-            self.label("Pages", 24, 646, 200, 24, 16, True)
-            hint = self.label("Drag rows to reorder. Uncheck rows to hide pages.", 118, 648, 420, 18)
-            hint.setFont_(NSFont.systemFontOfSize_(11))
-            self.buildPageTable(24, 432, 672, 200)
+            # Scrollable content area above the bottom bar
+            content_h = 460
+            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 40, 680, 460))
+            scroll.setHasVerticalScroller_(True)
+            scroll.setHasHorizontalScroller_(False)
+            scroll.setAutohidesScrollers_(True)
+            scroll.setBorderType_(0)  # NSNoBorder
 
-            self.label("API & Data Sources", 24, 392, 240, 24, 16, True)
+            inner = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 660, content_h))
+            cy = content_h  # y coordinate, counting down
+
+            # -- Display section --
+            lbl = self._addLabel(inner, "Display", 10, cy-22, 200, 20, 14, True)
+            cy -= 30
+            self._addLabel(inner, "IP", 12, cy, 30)
+            self._addTextField(inner, "host", 44, cy-2, 180)
+            self._addLabel(inner, "Port", 232, cy, 40)
+            self._addTextField(inner, "port", 272, cy-2, 60)
+            self._addLabel(inner, "Interval", 340, cy, 60)
+            self._addTextField(inner, "interval", 400, cy-2, 50)
+            self._addButton(inner, "Find", "rediscover:", 460, cy-4, 60)
+            cy -= 36
+
+            # -- Pages section --
+            lbl = self._addLabel(inner, "Pages", 10, cy-22, 200, 20, 14, True)
+            cy -= 28
+            self.buildPageTable(inner, 10, cy-140, 640, 140)
+            cy -= 150
+
+            # -- API & Data Sources --
+            lbl = self._addLabel(inner, "API & Data Sources", 10, cy-22, 240, 20, 14, True)
+            cy -= 28
             rows = [
                 ("DeepSeek Key", "deepseek_key", True),
                 ("MiMo Key", "mimo_key", True),
@@ -866,18 +891,46 @@ def run_gui_app(args):
                 ("oMLX Health", "omlx_health_url", False),
                 ("oMLX Stats", "omlx_stats", False),
             ]
-            y = 360
             for title, key, secure in rows:
-                self.label(title, 32, y + 3, 110)
-                self.textField(key, 150, y, 520, secure=secure)
-                y -= 32
+                self._addLabel(inner, title, 12, cy+3, 110)
+                self._addTextField(inner, key, 128, cy, 500, secure=secure)
+                cy -= 28
 
-            self.status_label = self.label("Sender starting...", 24, 52, 440, 22)
-            self.button("Save", "saveSettings:", 496, 48, 86)
-            self.button("Close", "closeWindow:", 600, 48, 86)
+            # Trim inner view height to actual content
+            actual_h = max(content_h, content_h - cy + 20)
+            inner.setFrame_(NSMakeRect(0, 0, 660, actual_h))
+            scroll.setDocumentView_(inner)
+            self.window.contentView().addSubview_(scroll)
+            self._scroll_view = scroll
 
         @objc.python_method
-        def buildPageTable(self, x, y, w, h):
+        def _addLabel(self, parent, text, x, y, w=110, h=18, size=12, bold=False):
+            field = NSTextField.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
+            field.setStringValue_(text)
+            field.setEditable_(False); field.setSelectable_(False)
+            field.setBezeled_(False); field.setDrawsBackground_(False)
+            field.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
+            parent.addSubview_(field)
+            return field
+
+        @objc.python_method
+        def _addTextField(self, parent, key, x, y, w=360, secure=False):
+            cls = NSSecureTextField if secure else NSTextField
+            field = cls.alloc().initWithFrame_(NSMakeRect(x, y, w, 22))
+            field.setStringValue_(str(self.config.get(key, "")))
+            parent.addSubview_(field)
+            self.fields[key] = field
+            return field
+
+        @objc.python_method
+        def _addButton(self, parent, title, action, x, y, w=60, h=24):
+            btn = NSButton.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
+            btn.setTitle_(title); btn.setTarget_(self); btn.setAction_(action)
+            parent.addSubview_(btn)
+            return btn
+
+        @objc.python_method
+        def buildPageTable(self, parent, x, y, w, h):
             scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
             scroll.setHasVerticalScroller_(True)
             table = NSTableView.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
@@ -900,7 +953,7 @@ def run_gui_app(args):
             table.setDraggingSourceOperationMask_forLocal_(NSDragOperationMove, True)
             table.setAllowsMultipleSelection_(False)
             scroll.setDocumentView_(table)
-            self.window.contentView().addSubview_(scroll)
+            parent.addSubview_(scroll)
             self.page_table = table
 
         def numberOfRowsInTableView_(self, tableView):
