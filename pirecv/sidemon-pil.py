@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """SideMon PIL receiver — renders dashboards to /dev/fb0"""
-import socket, json, threading, time, os, sys, argparse, select
+import socket, json, threading, time, os, sys, argparse, select, calendar
 from PIL import Image, ImageDraw, ImageFont
+from datetime import datetime, timezone, timedelta
 
 W, H = 480, 320
 FD = "/usr/share/fonts/truetype"
@@ -42,6 +43,8 @@ THEMES = {
                  "accent": (235,185,75)},
     "omlx":     {"bg": (10,16,12),   "pn": (18,28,20), "card": (22,34,24),
                  "accent": (95,195,95)},
+    "datetime": {"bg": (8,10,22),    "pn": (16,18,34), "card": (20,22,40),
+                 "accent": (100,160,240)},
 }
 
 state = {}; lock = threading.Lock()
@@ -139,7 +142,7 @@ def pg_system(s):
     ld = s.get("load",[0,0,0])
     d.text((30+hw, by+26), f"{ld[0]:.2f}  {ld[1]:.2f}", fill=C["disk"], font=F["b18"])
 
-    dots(d, 0, 6)
+    dots(d, 0, 7)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
@@ -182,7 +185,7 @@ def pg_apis(api):
         d.text((x+10, y1+10), lbl, fill=C["dm"], font=F["r11"])
         d.text((x+10, y1+34), val, fill=col, font=F["b24"])
 
-    dots(d, 1, 6)
+    dots(d, 1, 7)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
@@ -236,7 +239,7 @@ def pg_clash(cl):
     d.text((30+hw, y2+6), "MODE", fill=C["dm"], font=F["r11"])
     d.text((30+hw, y2+24), cl.get("mode","Rule"), fill=C["purple"], font=F["b16"])
 
-    dots(d, 2, 6)
+    dots(d, 2, 7)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
@@ -285,7 +288,7 @@ def pg_codex(cx):
     d.text((20, y1+5), "RESET", fill=C["dm"], font=F["r11"])
     d.text((90, y1+4), cx.get("reset_time","?"), fill=C["gold"], font=F["r14"])
 
-    dots(d, 3, 6)
+    dots(d, 3, 7)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
@@ -357,7 +360,7 @@ def pg_weather(w):
     d.text((30+hw, y2+5), "UV", fill=C["dm"], font=F["r10"])
     d.text((60+hw, y2+3), str(w.get("uv_index","?")), fill=C["rose"], font=F["b16"])
 
-    dots(d, 4, 6)
+    dots(d, 4, 7)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
@@ -425,7 +428,7 @@ def pg_omlx(om):
             bar(d, 140, by+3, W-190, 10, pct, colors[i%3])
             d.text((W-42, by), fmt_tk(tk), fill=C["w"], font=F["r10"])
 
-    dots(d, 5, 6)
+    dots(d, 5, 7)
     return img
 
 
@@ -433,11 +436,97 @@ def pg_omlx(om):
 # Infrastructure
 # ══════════════════════════════════════════════════════════════════════
 
+
+# ══════════════════════════════════════════════════════════════════════
+# DateTime — clock + calendar
+# ══════════════════════════════════════════════════════════════════════
+
+def pg_datetime(dt_data):
+    t = THEMES["datetime"]
+    img = Image.new("RGBA", (W, H), t["bg"])
+    d = ImageDraw.Draw(img)
+    hdr(d, "DATETIME", "", t)
+
+    # Get current time from Mac (or local)
+    ts = dt_data.get("timestamp", 0)
+    if ts > 0:
+        utc_now = datetime.fromtimestamp(ts, tz=timezone.utc)
+        local_tz = timezone(timedelta(hours=8))
+        now = utc_now.astimezone(local_tz)
+    else:
+        now = datetime.now()
+
+    # ── Large time display (left) ──
+    time_str = now.strftime("%H:%M")
+    date_str = now.strftime("%Y-%m-%d")
+    dow_str = now.strftime("%A")
+
+    card(d, 10, 46, 220, 90, t["card"])
+    # Time
+    tw = d.textlength(time_str, font=F["b48"])
+    d.text((10 + (220-tw)//2, 52), time_str, fill=C["w"], font=F["b48"])
+    # Date
+    tw2 = d.textlength(date_str, font=F["r14"])
+    d.text((10 + (220-tw2)//2, 108), date_str, fill=C["gr"], font=F["r14"])
+    # Day of week
+    tw3 = d.textlength(dow_str, font=F["r12"])
+    d.text((10 + (220-tw3)//2, 126), dow_str, fill=C["cyan"], font=F["r12"])
+
+    # ── Uptime (right of time) ──
+    card(d, 240, 46, 230, 90, t["card"])
+    d.text((250, 52), "SYSTEM TIME", fill=C["dm"], font=F["r11"])
+    sec_str = now.strftime(":%S")
+    d.text((250, 72), f"{now.strftime('%H:%M')}{sec_str}", fill=C["accent"], font=F["b22"])
+    tz_str = now.strftime("UTC%z")
+    d.text((250, 100), tz_str, fill=C["gr"], font=F["r12"])
+    # Seconds as large number
+    d.text((420, 68), now.strftime("%S"), fill=C["dm"], font=F["b30"])
+
+    # ── Calendar ──
+    y0 = 148
+    card(d, 10, y0, W-20, 140, t["card"])
+
+    # Month header
+    month_str = now.strftime("%B %Y")
+    tw = d.textlength(month_str, font=F["b14"])
+    d.text(((W-tw)//2, y0+4), month_str, fill=C["accent"], font=F["b14"])
+
+    # Day headers
+    day_names = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+    col_w = (W-40) // 7
+    for i, dn in enumerate(day_names):
+        dx = 16 + i*col_w
+        color = C["sky"] if i >= 5 else C["dm"]
+        d.text((dx, y0+22), dn, fill=color, font=F["r10"])
+
+    # Calendar days
+    cal = calendar.monthcalendar(now.year, now.month)
+    today_day = now.day
+    row_h = 16
+    for week_i, week in enumerate(cal):
+        for day_i, day in enumerate(week):
+            if day == 0: continue
+            dx = 16 + day_i*col_w
+            dy = y0 + 40 + week_i*row_h
+            is_today = day == today_day
+            is_weekend = day_i >= 5
+            if is_today:
+                # Highlight today
+                rrect(d, (dx-2, dy-1, dx+col_w-6, dy+row_h-3), 3, C["accent"])
+                d.text((dx, dy), f"{day:2d}", fill=(10,12,20), font=F["b11"])
+            else:
+                color = C["sky"] if is_weekend else C["w"]
+                d.text((dx, dy), f"{day:2d}", fill=color, font=F["r11"])
+
+    dots(d, 6, 7)
+    return img
+
 RENDERERS = {
     "system": pg_system, "ccswitch": pg_apis, "clash": pg_clash,
     "codex": pg_codex, "weather": pg_weather, "omlx": pg_omlx,
+    "datetime": pg_datetime,
 }
-DEFAULT_ORDER = ["system", "ccswitch", "clash", "codex", "weather", "omlx"]
+DEFAULT_ORDER = ["system", "ccswitch", "clash", "codex", "weather", "datetime", "omlx"]
 active_order = list(DEFAULT_ORDER)
 
 def normalize_page_order(pages):

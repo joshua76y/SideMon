@@ -10,13 +10,14 @@ APP_NAME = "RpiZeroMon"
 CONFIG_DIR = os.path.expanduser(f"~/Library/Application Support/{APP_NAME}")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
-DEFAULT_PAGES = ["system", "ccswitch", "clash", "codex", "weather", "omlx"]
+DEFAULT_PAGES = ["system", "ccswitch", "clash", "codex", "weather", "datetime", "omlx"]
 PAGE_LABELS = {
     "system": "System",
     "ccswitch": "API Usage",
     "clash": "Clash",
     "codex": "Codex",
     "weather": "Weather",
+    "datetime": "DateTime",
     "omlx": "oMLX",
 }
 
@@ -198,6 +199,7 @@ def default_collectors(net_rx=0, net_tx=0):
         "clash": get_clash,
         "codex": get_codex,
         "weather": get_weather,
+        "datetime": get_datetime,
         "omlx": get_omlx,
     }
 
@@ -231,6 +233,9 @@ def _ccswitch_api_key():
 _ccswitch_cache = {"ts": 0, "data": None}
 
 
+
+def get_datetime():
+    return {"timestamp": int(time.time())}
 
 def get_apis():
     global _ccswitch_cache
@@ -354,10 +359,20 @@ def get_clash():
             elif name.startswith("Expire:"):
                 d["expire_date"] = name.replace("Expire:", "").strip()
 
-    tr = _mihomo("/traffic")
-    if tr:
-        d["upload_total"] = tr.get("up", 0)
-        d["download_total"] = tr.get("down", 0)
+    # /traffic is streaming; use /proxies GLOBAL stats for cumulative
+    px2 = _mihomo("/proxies")
+    if px2:
+        g2 = px2.get("proxies", {}).get("GLOBAL", {})
+        # Some Clash implementations put upload/download in the proxy stats
+        d["upload_total"] = g2.get("upload", 0)
+        d["download_total"] = g2.get("download", 0)
+
+    # Fallback: try /traffic with short timeout
+    if d["upload_total"] == 0 and d["download_total"] == 0:
+        tr = _mihomo("/traffic")
+        if tr:
+            d["upload_total"] = tr.get("up", 0)
+            d["download_total"] = tr.get("down", 0)
 
     conns = _mihomo("/connections")
     if conns:
@@ -489,23 +504,54 @@ def get_weather():
         return _weather_cache["data"]
 
     city = WEATHER_CITY or "Guangzhou"
-    data = {"temp": "", "desc": "", "humidity": "", "wind": "",
-            "hi": "", "lo": "", "city": city}
+    data = {"city": city, "temp_c": 0, "feels_like_c": 0, "humidity": 0,
+            "condition": "?", "wind_kph": 0, "wind_dir": "",
+            "date": "", "day_of_week": "",
+            "forecast": [], "sunrise": "?", "sunset": "?", "uv_index": "?"}
     try:
         r = requests.get(f"https://wttr.in/{city}?format=j1", timeout=5)
         if r.ok:
             j = r.json()
             cc = j["current_condition"][0]
-            data["temp"] = cc["temp_C"] + "°C"
-            data["feels"] = cc["FeelsLikeC"] + "°C"
-            data["humidity"] = cc["humidity"] + "%"
-            data["desc"] = cc["weatherDesc"][0]["value"]
-            data["wind"] = f"{cc['winddir16Point']} {cc['windspeedKmph']}km/h"
-            # Today's forecast
-            today = j["weather"][0]
-            data["hi"] = today["maxtempC"] + "°"
-            data["lo"] = today["mintempC"] + "°"
-    except: pass
+            data["temp_c"] = int(cc.get("temp_C", 0))
+            data["feels_like_c"] = int(cc.get("FeelsLikeC", 0))
+            data["humidity"] = int(cc.get("humidity", 0))
+            data["condition"] = cc.get("weatherDesc", [{}])[0].get("value", "?")
+            data["wind_kph"] = int(cc.get("windspeedKmph", 0))
+            data["wind_dir"] = cc.get("winddir16Point", "")
+
+            # Date info
+            today = j.get("weather", [{}])[0]
+            data["date"] = today.get("date", "")
+            # Day of week from date
+            from datetime import datetime
+            try:
+                dt = datetime.strptime(data["date"], "%Y-%m-%d")
+                data["day_of_week"] = dt.strftime("%a")
+            except: pass
+
+            # Forecast (3 days)
+            for wday in j.get("weather", [])[:3]:
+                fc = {"day": ""}
+                try:
+                    fdt = datetime.strptime(wday.get("date",""), "%Y-%m-%d")
+                    fc["day"] = fdt.strftime("%a")
+                except: fc["day"] = wday.get("date","")[-5:]
+                fc["high_c"] = wday.get("maxtempC", "?")
+                fc["low_c"] = wday.get("mintempC", "?")
+                fc["condition"] = wday.get("hourly", [{}])[4].get("weatherDesc", [{}])[0].get("value", "?") if len(wday.get("hourly",[])) > 4 else "?"
+                data["forecast"].append(fc)
+
+            # Sunrise/sunset
+            astro = today.get("astronomy", [{}])[0] if today.get("astronomy") else {}
+            data["sunrise"] = astro.get("sunrise", "?").lstrip("0")
+            data["sunset"] = astro.get("sunset", "?").lstrip("0")
+
+            # UV index
+            uv_vals = [int(w.get("uvIndex", 0)) for w in j.get("weather", []) if w.get("uvIndex")]
+            data["uv_index"] = max(uv_vals) if uv_vals else "?"
+    except Exception as e:
+        print(f"Weather error: {e}", file=sys.stderr)
 
     _weather_cache = {"ts": now, "data": data}
     return data
@@ -790,10 +836,14 @@ def run_gui_app(args):
 
         @objc.python_method
         def loadStatusImage(self):
+            # Try template icons first (for clean B&W menu bar appearance)
+            app_dir = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+            base_dir = os.path.dirname(app_dir)
             paths = [
-                os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0]))), "Resources", "icon.icns"),
-                os.path.join(os.getcwd(), "assets", "icon-1024.png"),
-                os.path.join(os.getcwd(), "assets", "icon.icns"),
+                os.path.join(base_dir, "assets", "template-icon.png"),
+                os.path.join(app_dir, "Resources", "template-icon.png"),
+                os.path.join(os.getcwd(), "assets", "template-icon.png"),
+                os.path.join(app_dir, "Resources", "icon.icns"),
             ]
             for path in paths:
                 if os.path.exists(path):
@@ -835,7 +885,7 @@ def run_gui_app(args):
             mask = (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
             self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, 680, 520), mask, NSBackingStoreBuffered, False
+                NSMakeRect(0, 0, 520, 420), mask, NSBackingStoreBuffered, False
             )
             self.window.setTitle_("RpiZeroMon Settings")
             self.window.setReleasedWhenClosed_(False)
@@ -850,7 +900,7 @@ def run_gui_app(args):
 
             # Scrollable content area above the bottom bar
             content_h = 460
-            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 40, 680, 460))
+            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(0, 40, 520, 360))
             scroll.setHasVerticalScroller_(True)
             scroll.setHasHorizontalScroller_(False)
             scroll.setAutohidesScrollers_(True)
@@ -884,12 +934,6 @@ def run_gui_app(args):
                 ("DeepSeek Key", "deepseek_key", True),
                 ("MiMo Key", "mimo_key", True),
                 ("MiMo Base", "mimo_base", False),
-                ("CC Switch DB", "ccswitch_db", False),
-                ("Clash Socket", "mihomo_socket", False),
-                ("Codex DB", "codex_db", False),
-                ("Weather City", "weather_city", False),
-                ("oMLX Health", "omlx_health_url", False),
-                ("oMLX Stats", "omlx_stats", False),
             ]
             for title, key, secure in rows:
                 self._addLabel(inner, title, 12, cy+3, 110)
