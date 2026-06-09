@@ -159,7 +159,7 @@ def dots(d, cur, total):
 
 def pg_system(s):
     t = THEMES["system"]
-    img = Image.new("RGB", (W, H), t["bg"])
+    img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
     hdr(d, "SYSTEM", s.get("hostname", "?"), t)
 
@@ -211,7 +211,7 @@ def pg_system(s):
 
 def pg_apis(api):
     t = THEMES["ccswitch"]
-    img = Image.new("RGB", (W, H), t["bg"])
+    img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
     hdr(d, "API USAGE", "", t)
 
@@ -272,7 +272,7 @@ def pg_apis(api):
 
 def pg_clash(cl):
     t = THEMES["clash"]
-    img = Image.new("RGB", (W, H), t["bg"])
+    img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
     status = "ONLINE" if cl.get("running") else "OFFLINE"
     hdr(d, "CLASH", status, t)
@@ -347,7 +347,7 @@ def pg_clash(cl):
 
 def pg_codex(cx):
     t = THEMES["codex"]
-    img = Image.new("RGB", (W, H), t["bg"])
+    img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
     hdr(d, "CODEX", "", t)
 
@@ -395,7 +395,7 @@ def pg_codex(cx):
 
 def pg_weather(w):
     t = THEMES["weather"]
-    img = Image.new("RGB", (W, H), t["bg"])
+    img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
 
     city = w.get("city", "?")
@@ -485,7 +485,7 @@ def pg_weather(w):
 
 def pg_omlx(om):
     t = THEMES["omlx"]
-    img = Image.new("RGB", (W, H), t["bg"])
+    img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
     status = "ONLINE" if om.get("running") else "OFFLINE"
     hdr(d, "OMLX", status, t)
@@ -612,11 +612,11 @@ def waiting_ip_text(ips=None):
 def write_fb(path, img):
     img = img.rotate(180, expand=False)
     with open(path, "wb") as f:
-        f.write(img.tobytes("raw", "RGB"))
+        f.write(img.tobytes("raw", "BGRA"))
 
 def show_waiting(fb_dev):
     t = THEMES["system"]
-    img = Image.new("RGB", (W, H), t["bg"])
+    img = Image.new("RGBA", (W, H), t["bg"])
     d = ImageDraw.Draw(img)
     d.rectangle((0, 0, W, 42), fill=t["pn"])
     d.text((16, 8), "SideMon", fill=C["w"], font=F["b20"])
