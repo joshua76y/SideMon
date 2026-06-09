@@ -885,58 +885,60 @@ def run_gui_app(args):
             mask = (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
             self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, 440, 300), mask, NSBackingStoreBuffered, False
+                NSMakeRect(0, 0, 520, 360), mask, NSBackingStoreBuffered, False
             )
             self.window.setTitle_("RpiZeroMon Settings")
             self.window.setReleasedWhenClosed_(False)
             self.window.setDelegate_(self)
-            self.window.setMinSize_(NSMakeSize(440, 300))
-            self.window.setReleasedWhenClosed_(False)
+            self.window.setMinSize_(NSMakeSize(480, 340))
             self.window.center()
 
-            # All content goes directly on contentView (no scroll needed — compact layout)
             cv = self.window.contentView()
-            win_w = 440
-            y = 300  # Cocoa y: bottom=0, top=300. We go top-down by subtracting.
+            WW = 520
+            CH = 360  # content view height
 
-            # ── Display ──
-            y -= 20
-            self.addLabel(cv, "Display", 12, y, 400, 18, 13, True)
-            y -= 26
-            self.addLabel(cv, "IP", 12, y, 30)
-            self.addTextField(cv, "host", 44, y-2, 160)
-            self.addLabel(cv, "Port", 230, y, 36)
-            self.addTextField(cv, "port", 270, y-2, 60)
-            self.addLabel(cv, "Interval", 346, y, 60)
-            self.addTextField(cv, "interval", 406, y-2, 26)
-            self.addButton(cv, "Find", "rediscover:", win_w-56, y-4, 44)
-            y -= 30
+            # Cocoa coords: y=0 at bottom, y=CH at top
+            # Helper: top-down y to Cocoa y
+            def cy(top_y):
+                return CH - top_y
 
-            # ── Pages ──
-            self.addLabel(cv, "Pages", 12, y, 400, 18, 13, True)
-            y -= 4
-            table_h = 100
-            self.buildPageTable(cv, 12, y - table_h, win_w - 24, table_h)
-            y -= table_h + 8
+            ty = 10  # top-down y cursor (starts 10px from top edge)
+
+            # ── Display section ──
+            self.addLabel(cv, "Display", 16, cy(ty), 100, 18, 13, True)
+            ty += 20
+            self.addLabel(cv, "IP", 16, cy(ty), 24)
+            self.addTextField(cv, "host", 42, cy(ty) - 2, 180)
+            self.addLabel(cv, "Port", 230, cy(ty), 36)
+            self.addTextField(cv, "port", 268, cy(ty) - 2, 56)
+            self.addLabel(cv, "Interval", 332, cy(ty), 60)
+            self.addTextField(cv, "interval", 394, cy(ty) - 2, 44)
+            self.addButton(cv, "Find", "rediscover:", WW - 60, cy(ty) - 4, 44)
+            ty += 30
+
+            # ── Pages section ──
+            self.addLabel(cv, "Pages", 16, cy(ty), 100, 18, 13, True)
+            ty += 20
+            table_h = 110
+            self.buildPageTable(cv, 16, cy(ty + table_h), WW - 32, table_h)
+            ty += table_h + 6
 
             # ── API & Data Sources ──
-            self.addLabel(cv, "API & Data Sources", 12, y, 400, 18, 13, True)
-            y -= 22
+            self.addLabel(cv, "API & Data Sources", 16, cy(ty), 200, 18, 13, True)
+            ty += 20
             for title, key, secure in [
                 ("DeepSeek Key", "deepseek_key", True),
                 ("MiMo Key", "mimo_key", True),
                 ("MiMo Base", "mimo_base", False),
             ]:
-                self.addLabel(cv, title, 12, y+3, 100)
-                self.addTextField(cv, key, 118, y, 300, secure=secure)
-                y -= 26
+                self.addLabel(cv, title, 16, cy(ty) + 3, 100)
+                self.addTextField(cv, key, 120, cy(ty), 380, secure=secure)
+                ty += 24
 
-            # ── Bottom bar ──
-            self.status_label = self.addLabel(cv, "Sender starting...", 12, 8, 240, 18, 11)
-            self.addButton(cv, "Save", "saveSettings:", win_w-170, 4, 72)
-            self.addButton(cv, "Close", "closeWindow:", win_w-90, 4, 72)
-            # Separator line above bottom bar
-            # (NSBox or just a thin label)
+            # ── Bottom bar (fixed at bottom) ──
+            self.status_label = self.addLabel(cv, "Sender starting...", 16, 12, 280, 18, 11)
+            self.addButton(cv, "Save", "saveSettings:", WW - 172, 8, 72)
+            self.addButton(cv, "Close", "closeWindow:", WW - 92, 8, 72)
 
         @objc.python_method
         def addLabel(self, parent, text, x, y, w=110, h=18, size=12, bold=False):
