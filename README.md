@@ -32,8 +32,8 @@
                                 (480×320, 旋转 180°)
 ```
 
-- **Mac 端**（`mac/sidemon.py`）：采集系统状态、API 余额、Clash 代理、Codex 用量、天气、oMLX 等信息，打包为 JSON 通过 TCP 推送到 Pi
-- **Pi 端**（`pirecv/sidemon-pil.py`）：接收 JSON 数据，用 Pillow 渲染 6 个页面到 framebuffer，15 秒轮播
+- **Mac 端**（`mac/sidemon.py`）：提供 macOS 设置窗口，采集系统状态、API 余额、Clash 代理、Codex 用量、天气、oMLX 等信息，打包为 JSON 通过 TCP 推送到 Pi
+- **Pi 端**（`pirecv/sidemon-pil.py`）：接收 JSON 数据，用 Pillow 渲染启用的页面到 framebuffer，15 秒轮播
 - **自动发现**：Pi 端通过 UDP 广播（端口 9878），Mac 端自动扫描局域网找到 Pi
 
 ## 6 个页面
@@ -96,10 +96,19 @@ sudo systemctl enable --now sidemon-pil
 
 ```bash
 # 安装依赖
-pip3 install psutil requests
+pip3 install psutil requests pyobjc
 
 # 运行发送端（自动发现 Pi 或手动指定 IP）
 python3 mac/sidemon.py --host 192.168.1.37 -i 1
+
+# 打开设置窗口（命令行调试）
+python3 mac/sidemon.py --ui
+```
+
+设置窗口可配置显示端 IP、端口、推送间隔、页面勾选与排序、DeepSeek/MiMo API key，以及 Clash/Codex/oMLX/天气数据源路径。配置保存到：
+
+```bash
+~/Library/Application Support/RpiZeroMon/config.json
 ```
 
 ### 3. 桌面 App
@@ -119,6 +128,9 @@ python3 setup.py py2app
 | `--port`, `-P` | TCP 端口 | `9877` |
 | `--interval`, `-i` | 数据推送间隔（秒） | `1.0` |
 | `--once`, `-1` | 单次采集并打印 JSON，不循环 | — |
+| `--ui` | 打开 macOS 设置窗口 | — |
+| `--no-ui` | 在打包 App 中强制使用 CLI 模式 | — |
+| `--pages` | 逗号分隔的页面 key，例如 `system,clash,weather` | 配置文件 |
 | `--ds-key` | DeepSeek API Key（也可设 `DEEPSEEK_KEY` 环境变量） | — |
 | `--mm-key` | MiMo API Key（也可设 `MINIMI_KEY` 环境变量） | — |
 

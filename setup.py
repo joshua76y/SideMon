@@ -5,7 +5,7 @@ DATA_FILES = []
 OPTIONS = {
     'argv_emulation': False,
     'iconfile': 'assets/icon.icns',
-    'packages': ['psutil', 'requests', 'PIL'],
+    'packages': ['psutil', 'requests', 'PIL', 'objc', 'AppKit'],
     'plist': {
         'CFBundleName': 'RpiZeroMon',
         'CFBundleDisplayName': 'RpiZeroMon',
