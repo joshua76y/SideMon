@@ -773,7 +773,7 @@ def run_gui_app(args):
             image = self.loadStatusImage()
             if image:
                 image.setSize_((18, 18))
-                image.setTemplate_(False)
+                image.setTemplate_(True)
                 button.setImage_(image)
             button.setToolTip_("RpiZeroMon")
             menu = NSMenu.alloc().init()
