@@ -344,11 +344,10 @@ def get_clash():
     cfg = _mihomo("/configs")
     if cfg: d["mode"] = cfg.get("mode", "Rule")
 
-    px = _mihomo("/proxies")
-    if px:
-        g = px.get("proxies", {}).get("GLOBAL", {})
+    # Use /proxies/GLOBAL directly (smaller response, won't truncate)
+    g = _mihomo("/proxies/GLOBAL")
+    if g:
         d["current_node"] = g.get("now", "Unknown")
-        # Parse traffic and expire from proxy names
         all_names = g.get("all", [])
         for name in all_names:
             if name.startswith("Traffic:"):
@@ -359,24 +358,14 @@ def get_clash():
             elif name.startswith("Expire:"):
                 d["expire_date"] = name.replace("Expire:", "").strip()
 
-    # /traffic is streaming; use /proxies GLOBAL stats for cumulative
-    px2 = _mihomo("/proxies")
-    if px2:
-        g2 = px2.get("proxies", {}).get("GLOBAL", {})
-        # Some Clash implementations put upload/download in the proxy stats
-        d["upload_total"] = g2.get("upload", 0)
-        d["download_total"] = g2.get("download", 0)
-
-    # Fallback: try /traffic with short timeout
-    if d["upload_total"] == 0 and d["download_total"] == 0:
-        tr = _mihomo("/traffic")
-        if tr:
-            d["upload_total"] = tr.get("up", 0)
-            d["download_total"] = tr.get("down", 0)
-
     conns = _mihomo("/connections")
     if conns:
         d["active_connections"] = len(conns.get("connections", []))
+        # Sum upload/download from active connections
+        total_up = sum(c.get("upload", 0) for c in conns.get("connections", []))
+        total_dn = sum(c.get("download", 0) for c in conns.get("connections", []))
+        d["upload_total"] = total_up
+        d["download_total"] = total_dn
 
     d["update_time"] = datetime.datetime.now().strftime("%H:%M:%S")
     _clash_cache = {"ts": now, "data": d}
@@ -886,17 +875,17 @@ def run_gui_app(args):
             mask = (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
             self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, 520, 360), mask, NSBackingStoreBuffered, False
+                NSMakeRect(0, 0, 520, 520), mask, NSBackingStoreBuffered, False
             )
             self.window.setTitle_("RpiZeroMon Settings")
             self.window.setReleasedWhenClosed_(False)
             self.window.setDelegate_(self)
-            self.window.setMinSize_(NSMakeSize(480, 340))
+            self.window.setMinSize_(NSMakeSize(480, 500))
             self.window.center()
 
             cv = self.window.contentView()
             WW = 520
-            CH = 360  # content view height
+            CH = 520  # content view height
 
             # Cocoa coords: y=0 at bottom, y=CH at top
             # Helper: top-down y to Cocoa y
@@ -920,9 +909,9 @@ def run_gui_app(args):
             # ── Pages section ──
             self.addLabel(cv, "Pages", 16, cy(ty), 100, 18, 13, True)
             ty += 20
-            table_h = 110
+            table_h = 220
             self.buildPageTable(cv, 16, cy(ty + table_h), WW - 32, table_h)
-            ty += table_h + 6
+            ty += table_h + 20
 
             # ── API & Data Sources ──
             self.addLabel(cv, "API & Data Sources", 16, cy(ty), 200, 18, 13, True)

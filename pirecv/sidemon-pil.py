@@ -27,38 +27,35 @@ for s in [9,10,11,12,13,14,16,18,20,22,24,26,28,30,32,36,40,48]:
 # Design System — Bold, vibrant, commercial-grade
 # ══════════════════════════════════════════════════════════════════════
 
-# Dark base
 BG = (12, 14, 20)
 PN = (20, 22, 30)
 CARD = (26, 28, 38)
 BORDER = (44, 46, 58)
 DIVIDER = (38, 40, 52)
 
-# Text
 TX = (240, 242, 248)
 TX2 = (168, 172, 188)
 TX3 = (100, 104, 120)
 
-# === Bold page accent colors ===
+# Bold page accent colors
 AC = {
-    "sys":   (0, 210, 140),     # vivid emerald
-    "api":   (50, 160, 255),    # electric blue
-    "clash": (255, 160, 50),    # hot orange
-    "codex": (170, 100, 255),   # vivid purple
-    "wthr":  (255, 200, 50),    # bright gold
-    "dt":    (80, 200, 255),    # cyan
-    "omlx":  (80, 220, 110),    # lime green
+    "sys":   (0, 210, 140),
+    "api":   (50, 160, 255),
+    "clash": (255, 160, 50),
+    "codex": (170, 100, 255),
+    "wthr":  (255, 200, 50),
+    "dt":    (80, 200, 255),
+    "omlx":  (80, 220, 110),
 }
 
-# === Page-specific background tints ===
 PAGE_BG = {
-    "sys":   (10, 18, 22),      # teal tint
-    "api":   (10, 14, 26),      # blue tint
-    "clash": (22, 16, 10),      # warm tint
-    "codex": (18, 12, 26),      # purple tint
-    "wthr":  (22, 20, 10),      # gold tint
-    "dt":    (10, 18, 24),      # cyan tint
-    "omlx":  (10, 20, 14),      # green tint
+    "sys":   (10, 18, 22),
+    "api":   (10, 14, 26),
+    "clash": (22, 16, 10),
+    "codex": (18, 12, 26),
+    "wthr":  (22, 20, 10),
+    "dt":    (10, 18, 24),
+    "omlx":  (10, 20, 14),
 }
 
 state = {}; lock = threading.Lock()
@@ -75,7 +72,6 @@ def card(d, x, y, w, h, fill=None, radius=6):
     rr(d, (x, y, x+w, y+h), radius, f)
 
 def arc_g(d, cx, cy, r, pct, fg, width=10):
-    """Bold arc gauge with thick ring."""
     bg = BORDER
     d.ellipse((cx-r, cy-r, cx+r, cy+r), outline=bg, width=width)
     if pct > 0.005:
@@ -90,34 +86,40 @@ def bar(d, x, y, w, h, pct, fg, radius=None):
     if fw > h:
         rr(d, (x, y, x+fw, y+h), radius, fg)
 
+def pct_color(pct):
+    """Color based on percentage: green -> yellow -> red."""
+    if pct < 0.5:
+        return (0, 210, 140)     # green
+    elif pct < 0.75:
+        return (255, 200, 50)    # yellow
+    elif pct < 0.9:
+        return (255, 140, 40)    # orange
+    else:
+        return (255, 70, 70)     # red
+
 def ct(d, y, text, fill, fk):
     tw = d.textlength(text, font=F[fk])
     d.text(((W-tw)//2, y), text, fill=fill, font=F[fk])
 
 def hdr(d, title, accent, bg_tint=None):
-    """Page header with colored accent bar."""
     hdr_bg = bg_tint or PN
     d.rectangle((0, 0, W, 34), fill=hdr_bg)
-    # Left accent stripe
     d.rectangle((0, 0, 4, 34), fill=accent)
     d.text((14, 7), title, fill=accent, font=F["b18"])
 
 def nav(d, cur, total, accent):
-    """Bottom navigation with colored dot."""
     d.rectangle((0, H-16, W, H), fill=PN)
     d.line((0, H-16, W, H-16), fill=DIVIDER, width=1)
-    # Dots
-    dot_r = 3
-    spacing = 14
+    dot_r = 3; spacing = 14
     total_w = total * spacing
     sx = (W - total_w) // 2
     for i in range(total):
         cx = sx + i * spacing + dot_r
-        cy = H - 9
+        cy_ = H - 9
         if i == cur:
-            d.ellipse((cx-dot_r, cy-dot_r, cx+dot_r, cy+dot_r), fill=accent)
+            d.ellipse((cx-dot_r, cy_-dot_r, cx+dot_r, cy_+dot_r), fill=accent)
         else:
-            d.ellipse((cx-dot_r, cy-dot_r, cx+dot_r, cy+dot_r), fill=DIVIDER)
+            d.ellipse((cx-dot_r, cy_-dot_r, cx+dot_r, cy_+dot_r), fill=DIVIDER)
 
 def fmt_tk(n):
     if n >= 1e9: return f"{n/1e9:.1f}B"
@@ -134,7 +136,7 @@ def fmtb(n):
 TOTAL_PAGES = 7
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 1: System — thick gauges, teal background
+# Page 1: System — big thick gauges (2x size, 2x thickness)
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_system(s):
@@ -144,39 +146,37 @@ def pg_system(s):
     ac = AC["sys"]
     hdr(d, "SYSTEM", ac, bg)
 
-    # Three thick arc gauges — different sizes
-    gy = 108
-    positions = [80, 240, 400]
+    # Three big arc gauges — 2x radius, 2x width
+    gy = 110
+    positions = [82, 240, 398]
     gauges = [
-        (s.get("cpu",0)/100,  AC["sys"],  "CPU",  f"{int(s.get('cpu',0))}%", 40, 12),
-        (s.get("mem",0)/100,  AC["api"],  "MEM",  f"{int(s.get('mem',0))}%", 36, 10),
-        (s.get("disk",0)/100, AC["clash"], "DISK", f"{int(s.get('disk',0))}%", 32, 8),
+        (s.get("cpu",0)/100,  AC["sys"],  "CPU",  f"{int(s.get('cpu',0))}%", 56, 22),
+        (s.get("mem",0)/100,  AC["api"],  "MEM",  f"{int(s.get('mem',0))}%", 48, 18),
+        (s.get("disk",0)/100, AC["clash"], "DISK", f"{int(s.get('disk',0))}%", 42, 16),
     ]
     for i, (pct, color, label, val, radius, w_) in enumerate(gauges):
         x = positions[i]
-        arc_g(d, x, gy, radius, min(pct, 1), color, width=w_)
-        # Value centered
-        tw = d.textlength(val, font=F["b20"])
-        d.text((x - tw//2, gy - 12), val, fill=TX, font=F["b20"])
-        # Label below
-        tw2 = d.textlength(label, font=F["r11"])
-        d.text((x - tw2//2, gy + radius + 10), label, fill=color, font=F["r11"])
+        p = min(pct, 1)
+        arc_g(d, x, gy, radius, p, color, width=w_)
+        # Value centered inside ring
+        tw = d.textlength(val, font=F["b24"])
+        d.text((x - tw//2, gy - 14), val, fill=TX, font=F["b24"])
+        # Label below ring
+        tw2 = d.textlength(label, font=F["r12"])
+        d.text((x - tw2//2, gy + radius + 8), label, fill=color, font=F["r12"])
 
-    # Bottom info row
-    by = 184
+    # Bottom info row — 3 cards
+    by = 220
     cw = (W - 30) // 3
-    # Uptime
     card(d, 10, by, cw, 52)
     d.text((18, by+6), "UPTIME", fill=TX3, font=F["r10"])
     d.text((18, by+24), s.get("uptime","?"), fill=ac, font=F["b18"])
 
-    # Load
     card(d, 20+cw, by, cw, 52)
     ld = s.get("load",[0,0,0])
     d.text((28+cw, by+6), "LOAD", fill=TX3, font=F["r10"])
     d.text((28+cw, by+24), f"{ld[0]:.1f}  {ld[1]:.1f}", fill=TX2, font=F["b18"])
 
-    # Hostname
     card(d, 30+2*cw, by, cw, 52)
     hn = s.get("hostname","?")
     if len(hn) > 14: hn = hn[:12]+".."
@@ -187,7 +187,7 @@ def pg_system(s):
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 2: API Usage — blue tint
+# Page 2: API Usage
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_apis(api):
@@ -197,7 +197,6 @@ def pg_apis(api):
     ac = AC["api"]
     hdr(d, "API USAGE", ac, bg)
 
-    # Two balance bars
     y0 = 44
     for i, (label, key, color) in enumerate([
         ("DeepSeek", "ds_balance", AC["api"]),
@@ -214,7 +213,6 @@ def pg_apis(api):
         vs = f"CNY {val:.1f}" if isinstance(val, float) else str(val)
         d.text((W-140, by+22), vs, fill=TX, font=F["b16"])
 
-    # 3 stat cards
     y1 = 188
     cw = (W - 40) // 3
     items = [
@@ -232,7 +230,7 @@ def pg_apis(api):
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 3: Clash — warm orange, full info
+# Page 3: Clash — full info
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_clash(cl):
@@ -252,67 +250,67 @@ def pg_clash(cl):
     # Current node
     node = cl.get("current_node", "?")
     if len(node) > 26: node = node[:24]+".."
-    card(d, 10, 40, W-20, 40)
+    card(d, 10, 40, W-20, 38)
     d.text((20, 44), "NODE", fill=TX3, font=F["r10"])
-    d.text((80, 42), node, fill=TX, font=F["b16"])
+    d.text((70, 42), node, fill=TX, font=F["b16"])
 
     # Traffic bar
-    y0 = 88
-    card(d, 10, y0, W-20, 44)
+    y0 = 84
+    card(d, 10, y0, W-20, 40)
     tu = cl.get("traffic_used", "")
     tt = cl.get("traffic_total", "")
-    d.text((20, y0+6), "TRAFFIC", fill=TX3, font=F["r10"])
+    d.text((20, y0+4), "TRAFFIC", fill=TX3, font=F["r10"])
     if tu and tt:
-        d.text((20, y0+24), f"{tu} / {tt}", fill=TX, font=F["b14"])
+        d.text((100, y0+4), f"{tu} / {tt}", fill=TX, font=F["b14"])
         try:
             num = float(''.join(c for c in tu.split()[0] if c.isdigit() or c=='.'))
             den = float(''.join(c for c in tt.split()[0] if c.isdigit() or c=='.'))
             tp = num/den if den > 0 else 0
         except: tp = 0
-        bar(d, W-180, y0+26, 150, 10, tp, ac, radius=5)
+        bar(d, 20, y0+24, W-40, 10, tp, ac, radius=5)
     else:
-        d.text((20, y0+24), "N/A", fill=TX3, font=F["r14"])
+        d.text((100, y0+6), "N/A", fill=TX3, font=F["r14"])
 
     # Upload + Download
-    y1 = 140
+    y1 = 132
     hw = (W-30)//2
-    card(d, 10, y1, hw, 44)
-    d.text((20, y1+6), "UPLOAD", fill=AC["api"], font=F["r10"])
-    d.text((20, y1+22), fmtb(cl.get("upload_total",0)), fill=AC["api"], font=F["b18"])
+    card(d, 10, y1, hw, 40)
+    d.text((20, y1+4), "UPLOAD", fill=AC["api"], font=F["r10"])
+    d.text((20, y1+20), fmtb(cl.get("upload_total",0)), fill=AC["api"], font=F["b16"])
 
-    card(d, 20+hw, y1, hw, 44)
-    d.text((30+hw, y1+6), "DOWNLOAD", fill=ac, font=F["r10"])
-    d.text((30+hw, y1+22), fmtb(cl.get("download_total",0)), fill=ac, font=F["b18"])
+    card(d, 20+hw, y1, hw, 40)
+    d.text((30+hw, y1+4), "DOWNLOAD", fill=ac, font=F["r10"])
+    d.text((30+hw, y1+20), fmtb(cl.get("download_total",0)), fill=ac, font=F["b16"])
 
-    # Expire + Mode + Connections (3 columns)
-    y2 = 192
+    # Expire + Mode + Connections
+    y2 = 180
     cw3 = (W-40)//3
-    card(d, 10, y2, cw3, 44)
-    d.text((18, y2+6), "EXPIRE", fill=TX3, font=F["r10"])
+    card(d, 10, y2, cw3, 40)
+    d.text((18, y2+4), "EXPIRE", fill=TX3, font=F["r10"])
     exp = cl.get("expire_date", "") or "N/A"
     if len(exp) > 14: exp = exp[:12]+".."
-    d.text((18, y2+22), exp, fill=AC["wthr"], font=F["b13"])
+    d.text((18, y2+20), exp, fill=AC["wthr"], font=F["b13"])
 
-    card(d, 20+cw3, y2, cw3, 44)
-    d.text((28+cw3, y2+6), "MODE", fill=TX3, font=F["r10"])
-    d.text((28+cw3, y2+22), cl.get("mode","Rule"), fill=AC["codex"], font=F["b13"])
+    card(d, 20+cw3, y2, cw3, 40)
+    d.text((28+cw3, y2+4), "MODE", fill=TX3, font=F["r10"])
+    d.text((28+cw3, y2+20), cl.get("mode","Rule"), fill=AC["codex"], font=F["b13"])
 
-    card(d, 30+2*cw3, y2, cw3, 44)
-    d.text((38+2*cw3, y2+6), "CONNS", fill=TX3, font=F["r10"])
-    d.text((38+2*cw3, y2+22), str(cl.get("active_connections",0)), fill=TX, font=F["b18"])
+    card(d, 30+2*cw3, y2, cw3, 40)
+    d.text((38+2*cw3, y2+4), "CONNS", fill=TX3, font=F["r10"])
+    d.text((38+2*cw3, y2+20), str(cl.get("active_connections",0)), fill=TX, font=F["b16"])
 
     # Updated time
-    y3 = 244
+    y3 = 228
     upd = cl.get("update_time", "")
     if upd:
-        card(d, 10, y3, W-20, 30)
-        d.text((20, y3+8), f"Updated: {upd}", fill=TX3, font=F["r10"])
+        card(d, 10, y3, W-20, 28)
+        d.text((20, y3+6), f"Updated: {upd}", fill=TX3, font=F["r10"])
 
     nav(d, 2, TOTAL_PAGES, ac)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 4: Codex — purple tint, big percentage gauges
+# Page 4: Codex — percentage gauges with color by pct
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_codex(cx):
@@ -322,22 +320,23 @@ def pg_codex(cx):
     ac = AC["codex"]
     hdr(d, "CODEX", ac, bg)
 
-    # Two large percentage arc gauges — thick
+    # Two large percentage arc gauges — color changes by pct
     gy = 112
-    for i, (label, key, mx, color) in enumerate([
-        ("5 Hour", "tokens_5h", 2_000_000, AC["codex"]),
-        ("7 Day", "tokens_7d", 10_000_000, AC["api"]),
+    for i, (label, key, mx) in enumerate([
+        ("5 Hour", "tokens_5h", 2_000_000),
+        ("7 Day", "tokens_7d", 10_000_000),
     ]):
         x = 130 + i * 220
         tok = cx.get(key, 0)
         pct = min(tok/mx, 1.0) if tok > 0 else 0
         pct_int = int(pct * 100)
+        color = pct_color(pct)
         arc_g(d, x, gy, 50, pct, color, width=14)
         # Large percentage in center
         vs = f"{pct_int}%"
         tw = d.textlength(vs, font=F["b36"])
         d.text((x-tw//2, gy-22), vs, fill=color, font=F["b36"])
-        # Token count small
+        # Token count
         ts = fmt_tk(tok)
         tw2 = d.textlength(ts, font=F["r10"])
         d.text((x-tw2//2, gy+22), ts, fill=TX3, font=F["r10"])
@@ -362,7 +361,7 @@ def pg_codex(cx):
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 5: Weather — gold tint
+# Page 5: Weather
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_weather(w):
@@ -374,9 +373,7 @@ def pg_weather(w):
 
     hw = (W-30)//2
 
-    # Temperature (left) + Condition (right)
     temp_c = w.get("temp_c", 0)
-    tc = AC["wthr"] if temp_c < 30 else AC["clash"]
     card(d, 10, 40, hw, 68)
     d.text((20, 44), "TEMP", fill=TX3, font=F["r10"])
     d.text((20, 60), f"{int(temp_c)}°C", fill=TX, font=F["b30"])
@@ -390,7 +387,6 @@ def pg_weather(w):
     fl = w.get("feels_like_c", temp_c)
     d.text((30+hw, 88), f"Feels {int(fl)}°C", fill=TX3, font=F["r10"])
 
-    # Humidity + Wind
     y0 = 116
     card(d, 10, y0, hw, 38)
     d.text((20, y0+4), "HUMIDITY", fill=TX3, font=F["r10"])
@@ -400,7 +396,6 @@ def pg_weather(w):
     d.text((30+hw, y0+4), "WIND", fill=TX3, font=F["r10"])
     d.text((30+hw, y0+18), f"{w.get('wind_kph',0)} km/h", fill=TX2, font=F["b16"])
 
-    # 3-day forecast
     y1 = 162
     forecasts = w.get("forecast", [])[:3]
     fw = (W-40)//3
@@ -417,7 +412,6 @@ def pg_weather(w):
         if len(c2) > 12: c2 = c2[:10]+".."
         d.text((fx+8, y1+38), c2, fill=TX2, font=F["r9"])
 
-    # Sunrise + UV
     y2 = 224
     card(d, 10, y2, hw, 32)
     d.text((20, y2+8), "SUN", fill=TX3, font=F["r10"])
@@ -432,7 +426,7 @@ def pg_weather(w):
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 6: DateTime — cyan tint, calendar
+# Page 6: DateTime — colorful calendar
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_datetime(dt_data):
@@ -450,35 +444,40 @@ def pg_datetime(dt_data):
     else:
         now = datetime.now()
 
-    # Time (left) + Date info (right)
-    card(d, 10, 40, 200, 80)
+    # Time card (left) — big clock
+    card(d, 10, 40, 200, 76, fill=(20, 26, 36))
     time_str = now.strftime("%H:%M")
-    tw = d.textlength(time_str, font=F["b48"])
-    d.text((10+(200-tw)//2, 42), time_str, fill=TX, font=F["b48"])
+    tw = d.textlength(time_str, font=F["b40"])
+    d.text((10+(200-tw)//2, 44), time_str, fill=ac, font=F["b40"])
     sec_str = now.strftime("%S")
-    d.text((10+(200-d.textlength(sec_str,font=F["b22"]))//2, 96), sec_str, fill=TX3, font=F["b22"])
+    d.text((10+(200-d.textlength(sec_str,font=F["b18"]))//2, 90), sec_str, fill=(140, 180, 210), font=F["b18"])
 
-    card(d, 220, 40, 250, 80)
+    # Date card (right)
+    card(d, 220, 40, 250, 76, fill=(20, 26, 36))
     date_str = now.strftime("%Y-%m-%d")
-    d.text((230, 46), date_str, fill=TX2, font=F["b18"])
+    d.text((232, 46), date_str, fill=TX, font=F["b18"])
     dow = now.strftime("%A")
-    d.text((230, 70), dow, fill=ac, font=F["r14"])
+    d.text((232, 68), dow, fill=AC["wthr"], font=F["b14"])
     tz = now.strftime("UTC%z")
-    d.text((230, 92), tz, fill=TX3, font=F["r11"])
+    d.text((232, 88), tz, fill=(80, 130, 180), font=F["r11"])
 
-    # Calendar
-    y0 = 132
-    card(d, 10, y0, W-20, 148)
+    # Calendar — colorful
+    y0 = 128
+    card(d, 10, y0, W-20, 152, fill=(16, 22, 32))
     month_str = now.strftime("%B %Y")
-    tw = d.textlength(month_str, font=F["b12"])
-    d.text(((W-tw)//2, y0+4), month_str, fill=ac, font=F["b12"])
+    tw = d.textlength(month_str, font=F["b13"])
+    d.text(((W-tw)//2, y0+4), month_str, fill=ac, font=F["b13"])
 
+    # Day headers — different colors for each
     day_names = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+    day_colors = [
+        (168, 172, 188), (168, 172, 188), (168, 172, 188),
+        (168, 172, 188), (168, 172, 188), AC["api"], AC["clash"],
+    ]
     col_w = (W-40) // 7
     for i, dn in enumerate(day_names):
         dx = 14 + i*col_w
-        color = AC["api"] if i >= 5 else TX3
-        d.text((dx, y0+20), dn, fill=color, font=F["r10"])
+        d.text((dx, y0+20), dn, fill=day_colors[i], font=F["b10"])
 
     cal = calendar.monthcalendar(now.year, now.month)
     today_day = now.day
@@ -491,14 +490,18 @@ def pg_datetime(dt_data):
                 rr(d, (dx-2, dy-1, dx+col_w-6, dy+13), 3, ac)
                 d.text((dx, dy), f"{day:2d}", fill=BG, font=F["b10"])
             else:
-                col = AC["api"] if di >= 5 else TX2
+                # Weekends in warm colors, weekdays in cool
+                if di >= 5:
+                    col = (255, 170, 80) if di == 5 else (255, 120, 80)
+                else:
+                    col = (140, 200, 240)
                 d.text((dx, dy), f"{day:2d}", fill=col, font=F["r10"])
 
     nav(d, 5, TOTAL_PAGES, ac)
     return img
 
 # ══════════════════════════════════════════════════════════════════════
-# Page 7: oMLX — green tint, no model list
+# Page 7: oMLX — no model list, clean layout
 # ══════════════════════════════════════════════════════════════════════
 
 def pg_omlx(om):
@@ -508,7 +511,6 @@ def pg_omlx(om):
     ac = AC["omlx"]
     hdr(d, "OMLX", ac, bg)
 
-    # Status badge
     st = "ONLINE" if om.get("running") else "OFFLINE"
     st_col = AC["sys"] if om.get("running") else (220, 80, 80)
     badge_w = d.textlength(st, font=F["b11"]) + 16
@@ -524,29 +526,29 @@ def pg_omlx(om):
     d.text((110, 44), f"{mem_u:.1f} / {mem_c:.1f} GB", fill=TX2, font=F["b14"])
     bar(d, 20, 66, W-40, 10, mem_p, ac, radius=5)
 
-    # 4 stat boxes (2x2) — larger
+    # 4 stat boxes (2x2) — bigger
     y0 = 98
     hw = (W-30)//2
     stats = [
         ("MODELS", f"{om.get('loaded_count',0)} / {om.get('model_count',0)}", ac),
         ("REQUESTS", fmt_tk(om.get("total_requests",0)), TX),
-        ("PROMPT", f"{om.get('avg_prompt_speed',0):.1f} tk/s", AC["api"]),
-        ("GENERATION", f"{om.get('avg_gen_speed',0):.1f} tk/s", AC["wthr"]),
+        ("PROMPT SPEED", f"{om.get('avg_prompt_speed',0):.1f} tk/s", AC["api"]),
+        ("GEN SPEED", f"{om.get('avg_gen_speed',0):.1f} tk/s", AC["wthr"]),
     ]
     for i, (lbl, val, col) in enumerate(stats):
         x = 10 + (i%2)*(hw+10)
-        y = y0 + (i//2)*48
-        card(d, x, y, hw, 42)
-        d.text((x+10, y+4), lbl, fill=TX3, font=F["r10"])
-        d.text((x+10, y+22), val, fill=col, font=F["b18"])
+        y = y0 + (i//2)*52
+        card(d, x, y, hw, 46)
+        d.text((x+10, y+6), lbl, fill=TX3, font=F["r10"])
+        d.text((x+10, y+24), val, fill=col, font=F["b18"])
 
-    # Cache bar
-    y1 = 200
+    # Cache efficiency
+    y1 = 208
     ce = om.get("cache_efficiency", 0)*100
-    card(d, 10, y1, W-20, 48)
+    card(d, 10, y1, W-20, 52)
     d.text((20, y1+6), "CACHE EFFICIENCY", fill=TX3, font=F["r10"])
-    d.text((20, y1+24), f"{ce:.1f}%", fill=ac, font=F["b22"])
-    bar(d, 160, y1+28, W-200, 12, ce/100, ac, radius=6)
+    d.text((20, y1+26), f"{ce:.1f}%", fill=ac, font=F["b24"])
+    bar(d, 150, y1+30, W-190, 12, ce/100, ac, radius=6)
 
     nav(d, 6, TOTAL_PAGES, ac)
     return img
@@ -570,10 +572,6 @@ def normalize_page_order(pages):
         if p in RENDERERS and p not in seen:
             order.append(p); seen.add(p)
     return order or list(DEFAULT_ORDER)
-
-# ══════════════════════════════════════════════════════════════════════
-# Network
-# ══════════════════════════════════════════════════════════════════════
 
 def get_local_ips():
     ips = []
