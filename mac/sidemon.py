@@ -888,17 +888,17 @@ def run_gui_app(args):
             mask = (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
             self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, 520, 520), mask, NSBackingStoreBuffered, False
+                NSMakeRect(0, 0, 520, 420), mask, NSBackingStoreBuffered, False
             )
             self.window.setTitle_("RpiZeroMon Settings")
             self.window.setReleasedWhenClosed_(False)
             self.window.setDelegate_(self)
-            self.window.setMinSize_(NSMakeSize(480, 500))
+            self.window.setMinSize_(NSMakeSize(480, 400))
             self.window.center()
 
             cv = self.window.contentView()
             WW = 520
-            CH = 520  # content view height
+            CH = 420  # content view height
 
             # Cocoa coords: y=0 at bottom, y=CH at top
             # Helper: top-down y to Cocoa y
