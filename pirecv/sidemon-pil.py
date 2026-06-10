@@ -198,20 +198,31 @@ def pg_apis(api):
     hdr(d, "API USAGE", ac, bg)
 
     y0 = 44
-    for i, (label, key, color) in enumerate([
-        ("DeepSeek", "ds_balance", AC["api"]),
-        ("MiMo", "mm_balance", AC["codex"]),
-    ]):
-        by = y0 + i * 68
-        card(d, 10, by, W-20, 54)
-        d.text((20, by+6), label, fill=color, font=F["b14"])
-        bal = api.get(key, "?")
-        try: val = float(bal)
-        except: val = 0
-        pct = min(val / 50.0, 1.0) if val > 0 else 0
-        bar(d, 20, by+28, W-180, 12, pct, color, radius=6)
-        vs = f"CNY {val:.1f}" if isinstance(val, float) else str(val)
-        d.text((W-140, by+22), vs, fill=TX, font=F["b16"])
+    # DeepSeek — balance in CNY
+    by = y0
+    card(d, 10, by, W-20, 54)
+    d.text((20, by+6), "DeepSeek", fill=AC["api"], font=F["b14"])
+    ds_bal = api.get("ds_balance", "?")
+    try: ds_val = float(ds_bal)
+    except: ds_val = 0
+    ds_pct = min(ds_val / 50.0, 1.0) if ds_val > 0 else 0
+    bar(d, 20, by+28, W-180, 12, ds_pct, AC["api"], radius=6)
+    d.text((W-140, by+22), f"CNY {ds_val:.1f}", fill=TX, font=F["b16"])
+
+    # MiMo — token plan usage %
+    by2 = y0 + 68
+    card(d, 10, by2, W-20, 54)
+    d.text((20, by2+6), "MiMo", fill=AC["codex"], font=F["b14"])
+    mm_pct = 0
+    try: mm_pct = float(api.get("mm_balance", 0)) / 100.0
+    except: pass
+    mm_pct = min(mm_pct, 1.0)
+    bar(d, 20, by2+28, W-180, 12, mm_pct, AC["codex"], radius=6)
+    d.text((W-140, by2+20), f"{mm_pct*100:.1f}%", fill=TX, font=F["b16"])
+    # Show usage detail below label
+    mm_detail = api.get("mm_currency", "")
+    if mm_detail:
+        d.text((80, by2+8), mm_detail, fill=TX3, font=F["r10"])
 
     y1 = 188
     cw = (W - 40) // 3

@@ -264,17 +264,22 @@ def get_apis():
                     data["ds_currency"] = bi.get("currency", "CNY")
     except: pass
 
-    # MiniMi stats — from CC Switch DB (no public balance API)
+    # MiniMi stats — token plan usage percentage
+    MM_TOKEN_PLAN = 4_100_000_000  # 4.1B tokens
     try:
         db3 = sqlite3.connect(f"file:{CCSWITCH_DB}?mode=ro", uri=True, timeout=2)
-        today_ts = int(datetime.datetime.now().replace(hour=0,minute=0,second=0,microsecond=0).timestamp())
         row = db3.execute(
-                "SELECT COALESCE(SUM(input_tokens),0),COALESCE(SUM(output_tokens),0),COUNT(*) "
-                "FROM proxy_request_logs WHERE created_at>=? AND model LIKE '%mimo%'",
-                (today_ts,)).fetchone()
-        inp, out, cnt = row
-        data["mm_balance"] = str(inp + out)  # total tokens
-        data["mm_currency"] = f"{cnt} reqs"
+                "SELECT COALESCE(SUM(input_tokens),0)+COALESCE(SUM(output_tokens),0), COUNT(*) "
+                "FROM proxy_request_logs WHERE model LIKE '%mimo%'").fetchone()
+        used, cnt = row
+        pct = round(used / MM_TOKEN_PLAN * 100, 1) if MM_TOKEN_PLAN > 0 else 0
+        data["mm_balance"] = str(pct)  # percentage used
+        def _fk(n):
+            if n >= 1e9: return f"{n/1e9:.1f}B"
+            if n >= 1e6: return f"{n/1e6:.1f}M"
+            if n >= 1000: return f"{n/1000:.0f}K"
+            return str(n)
+        data["mm_currency"] = f"{_fk(used)}/{_fk(MM_TOKEN_PLAN)}"
         db3.close()
     except: pass
 
