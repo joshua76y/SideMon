@@ -308,14 +308,27 @@ def get_apis():
 # ══════════════════════════════════════════════════════════════════════
 
 def _mihomo(path):
+    """Query Mihomo/Clash REST API via Unix socket directly."""
     try:
-        r = subprocess.run(["curl","-s","--max-time","2","--unix-socket",MIHOMO,
-                           f"http://localhost{path}"], capture_output=True, text=True, timeout=3)
-        if not r.stdout: return None
-        # Take last JSON line (traffic endpoint may return multiple)
-        lines = [l for l in r.stdout.strip().split("\n") if l.strip().startswith("{")]
-        return json.loads(lines[-1]) if lines else None
-    except: return None
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(3)
+        s.connect(MIHOMO)
+        s.sendall(f"GET {path} HTTP/1.0\r\nHost: localhost\r\n\r\n".encode())
+        buf = b""
+        while True:
+            try:
+                chunk = s.recv(65536)
+                if not chunk: break
+                buf += chunk
+            except socket.timeout:
+                break
+        s.close()
+        body = buf.split(b"\r\n\r\n", 1)
+        if len(body) > 1 and body[1].strip():
+            return json.loads(body[1])
+        return None
+    except Exception:
+        return None
 
 def _mihomo_node():
     px = _mihomo("/proxies")
@@ -908,10 +921,10 @@ def run_gui_app(args):
 
             # ── Pages section ──
             self.addLabel(cv, "Pages", 16, cy(ty), 100, 18, 13, True)
-            ty += 20
+            ty += 2
             table_h = 220
             self.buildPageTable(cv, 16, cy(ty + table_h), WW - 32, table_h)
-            ty += table_h + 20
+            ty += table_h + 8
 
             # ── API & Data Sources ──
             self.addLabel(cv, "API & Data Sources", 16, cy(ty), 200, 18, 13, True)

@@ -110,16 +110,16 @@ def hdr(d, title, accent, bg_tint=None):
 def nav(d, cur, total, accent):
     d.rectangle((0, H-16, W, H), fill=PN)
     d.line((0, H-16, W, H-16), fill=DIVIDER, width=1)
-    dot_r = 3; spacing = 14
-    total_w = total * spacing
-    sx = (W - total_w) // 2
+    nums = "  ".join([str(i+1) for i in range(total)])
+    tw = d.textlength(nums, font=F["r10"])
+    sx = (W - tw) // 2
+    x = sx
     for i in range(total):
-        cx = sx + i * spacing + dot_r
-        cy_ = H - 9
-        if i == cur:
-            d.ellipse((cx-dot_r, cy_-dot_r, cx+dot_r, cy_+dot_r), fill=accent)
-        else:
-            d.ellipse((cx-dot_r, cy_-dot_r, cx+dot_r, cy_+dot_r), fill=DIVIDER)
+        ch = str(i+1)
+        cw = d.textlength(ch, font=F["r10"])
+        col = accent if i == cur else TX3
+        d.text((x, H-14), ch, fill=col, font=F["r10"])
+        x += cw + d.textlength("  ", font=F["r10"])
 
 def fmt_tk(n):
     if n >= 1e9: return f"{n/1e9:.1f}B"
@@ -150,9 +150,9 @@ def pg_system(s):
     gy = 110
     positions = [82, 240, 398]
     gauges = [
-        (s.get("cpu",0)/100,  AC["sys"],  "CPU",  f"{int(s.get('cpu',0))}%", 56, 22),
-        (s.get("mem",0)/100,  AC["api"],  "MEM",  f"{int(s.get('mem',0))}%", 48, 18),
-        (s.get("disk",0)/100, AC["clash"], "DISK", f"{int(s.get('disk',0))}%", 42, 16),
+        (s.get("cpu",0)/100,  (0, 210, 140),  "CPU",  f"{int(s.get('cpu',0))}%", 56, 22),
+        (s.get("mem",0)/100,  (50, 160, 255),  "MEM",  f"{int(s.get('mem',0))}%", 56, 22),
+        (s.get("disk",0)/100, (255, 160, 50),  "DISK", f"{int(s.get('disk',0))}%", 56, 22),
     ]
     for i, (pct, color, label, val, radius, w_) in enumerate(gauges):
         x = positions[i]
@@ -445,36 +445,40 @@ def pg_datetime(dt_data):
         now = datetime.now()
 
     # Time card (left) — big clock
-    card(d, 10, 40, 200, 76, fill=(20, 26, 36))
+    card(d, 10, 40, 200, 72, fill=(20, 26, 36))
     time_str = now.strftime("%H:%M")
     tw = d.textlength(time_str, font=F["b40"])
-    d.text((10+(200-tw)//2, 44), time_str, fill=ac, font=F["b40"])
+    d.text((10+(200-tw)//2, 42), time_str, fill=(255, 255, 255), font=F["b40"])
     sec_str = now.strftime("%S")
-    d.text((10+(200-d.textlength(sec_str,font=F["b18"]))//2, 90), sec_str, fill=(140, 180, 210), font=F["b18"])
+    d.text((10+(200-d.textlength(sec_str,font=F["b16"]))//2, 88), sec_str, fill=(140, 180, 210), font=F["b16"])
 
-    # Date card (right)
-    card(d, 220, 40, 250, 76, fill=(20, 26, 36))
+    # Date card (right) — current date big and vivid
+    card(d, 220, 40, 250, 72, fill=(20, 26, 36))
     date_str = now.strftime("%Y-%m-%d")
-    d.text((232, 46), date_str, fill=TX, font=F["b18"])
+    d.text((232, 42), date_str, fill=(255, 220, 80), font=F["b22"])
     dow = now.strftime("%A")
-    d.text((232, 68), dow, fill=AC["wthr"], font=F["b14"])
+    d.text((232, 68), dow, fill=ac, font=F["b16"])
     tz = now.strftime("UTC%z")
     d.text((232, 88), tz, fill=(80, 130, 180), font=F["r11"])
 
     # Calendar — colorful
-    y0 = 128
-    card(d, 10, y0, W-20, 152, fill=(16, 22, 32))
+    y0 = 122
+    card(d, 10, y0, W-20, 158, fill=(16, 22, 32))
     month_str = now.strftime("%B %Y")
     tw = d.textlength(month_str, font=F["b13"])
     d.text(((W-tw)//2, y0+4), month_str, fill=ac, font=F["b13"])
 
-    # Day headers — different colors for each
     day_names = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
     day_colors = [
         (168, 172, 188), (168, 172, 188), (168, 172, 188),
-        (168, 172, 188), (168, 172, 188), AC["api"], AC["clash"],
+        (168, 172, 188), (168, 172, 188), AC["api"], (255, 120, 80),
     ]
     col_w = (W-40) // 7
+    # Sunday column index = 6
+    su_x = 14 + 6 * col_w
+    su_w = col_w - 2
+    # Draw light red bg for Sunday column header + calendar rows
+    d.rectangle((su_x - 3, y0 + 18, su_x + su_w + 2, y0 + 154), fill=(40, 18, 18))
     for i, dn in enumerate(day_names):
         dx = 14 + i*col_w
         d.text((dx, y0+20), dn, fill=day_colors[i], font=F["b10"])
@@ -488,11 +492,12 @@ def pg_datetime(dt_data):
             dy = y0 + 36 + wi*16
             if day == today_day:
                 rr(d, (dx-2, dy-1, dx+col_w-6, dy+13), 3, ac)
-                d.text((dx, dy), f"{day:2d}", fill=BG, font=F["b10"])
+                d.text((dx, dy), f"{day:2d}", fill=BG, font=F["b12"])
             else:
-                # Weekends in warm colors, weekdays in cool
-                if di >= 5:
-                    col = (255, 170, 80) if di == 5 else (255, 120, 80)
+                if di == 6:  # Sunday
+                    col = (255, 130, 100)
+                elif di == 5:  # Saturday
+                    col = (255, 170, 80)
                 else:
                     col = (140, 200, 240)
                 d.text((dx, dy), f"{day:2d}", fill=col, font=F["r10"])
