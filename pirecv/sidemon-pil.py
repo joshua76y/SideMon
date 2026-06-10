@@ -461,12 +461,12 @@ def pg_datetime(dt_data):
     tz = now.strftime("UTC%z")
     d.text((232, 88), tz, fill=(80, 130, 180), font=F["r11"])
 
-    # Calendar — colorful
-    y0 = 122
-    card(d, 10, y0, W-20, 158, fill=(16, 22, 32))
+    # Calendar — colorful, larger fonts filling available space
+    y0 = 120
+    card(d, 10, y0, W-20, 178, fill=(16, 22, 32))
     month_str = now.strftime("%B %Y")
-    tw = d.textlength(month_str, font=F["b13"])
-    d.text(((W-tw)//2, y0+4), month_str, fill=ac, font=F["b13"])
+    tw = d.textlength(month_str, font=F["b14"])
+    d.text(((W-tw)//2, y0+4), month_str, fill=ac, font=F["b14"])
 
     day_names = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
     day_colors = [
@@ -474,33 +474,34 @@ def pg_datetime(dt_data):
         (168, 172, 188), (168, 172, 188), AC["api"], (255, 120, 80),
     ]
     col_w = (W-40) // 7
-    # Sunday column index = 6
+    # Sunday column bg
     su_x = 14 + 6 * col_w
     su_w = col_w - 2
-    # Draw light red bg for Sunday column header + calendar rows
-    d.rectangle((su_x - 3, y0 + 18, su_x + su_w + 2, y0 + 154), fill=(40, 18, 18))
+    d.rectangle((su_x - 3, y0 + 20, su_x + su_w + 2, y0 + 174), fill=(40, 18, 18))
     for i, dn in enumerate(day_names):
         dx = 14 + i*col_w
-        d.text((dx, y0+20), dn, fill=day_colors[i], font=F["b10"])
+        d.text((dx, y0+22), dn, fill=day_colors[i], font=F["b12"])
 
     cal = calendar.monthcalendar(now.year, now.month)
     today_day = now.day
+    row_h = 24
+    start_y = y0 + 40
     for wi, week in enumerate(cal):
         for di, day in enumerate(week):
             if day == 0: continue
             dx = 14 + di*col_w
-            dy = y0 + 36 + wi*16
+            dy = start_y + wi * row_h
             if day == today_day:
-                rr(d, (dx-2, dy-1, dx+col_w-6, dy+13), 3, ac)
-                d.text((dx, dy), f"{day:2d}", fill=BG, font=F["b12"])
+                rr(d, (dx-3, dy-2, dx+col_w-4, dy+18), 4, ac)
+                d.text((dx, dy), f"{day:2d}", fill=BG, font=F["b14"])
             else:
-                if di == 6:  # Sunday
+                if di == 6:
                     col = (255, 130, 100)
-                elif di == 5:  # Saturday
+                elif di == 5:
                     col = (255, 170, 80)
                 else:
                     col = (140, 200, 240)
-                d.text((dx, dy), f"{day:2d}", fill=col, font=F["r10"])
+                d.text((dx, dy), f"{day:2d}", fill=col, font=F["r13"])
 
     nav(d, 5, TOTAL_PAGES, ac)
     return img
