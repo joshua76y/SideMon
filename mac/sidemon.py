@@ -389,10 +389,8 @@ def get_clash():
     if conns:
         conn_list = conns.get("connections") or []
         d["active_connections"] = len(conn_list)
-        total_up = sum(c.get("upload", 0) for c in conn_list)
-        total_dn = sum(c.get("download", 0) for c in conn_list)
-        d["upload_total"] = total_up
-        d["download_total"] = total_dn
+
+# /traffic is streaming, can't use here
 
     d["update_time"] = datetime.datetime.now().strftime("%H:%M:%S")
     _clash_cache = {"ts": now, "data": d}

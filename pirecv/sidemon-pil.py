@@ -251,28 +251,31 @@ def pg_clash(cl):
     ac = AC["clash"]
     hdr(d, "CLASH VERGE", ac, bg)
 
-    # Status badge
+    # Status + Version
     st = "ONLINE" if cl.get("running") else "OFFLINE"
     st_col = AC["sys"] if cl.get("running") else (220, 80, 80)
     badge_w = d.textlength(st, font=F["b11"]) + 16
     rr(d, (W-14-badge_w, 8, W-14, 26), 4, st_col)
     d.text((W-14-badge_w+8, 9), st, fill=BG, font=F["b11"])
+    ver = cl.get("version", "")[:10]
+    if ver:
+        d.text((W-14-badge_w-80, 12), ver, fill=TX3, font=F["r9"])
 
-    # Current node
+    # Current node — big card
     node = cl.get("current_node", "?")
-    if len(node) > 26: node = node[:24]+".."
-    card(d, 10, 40, W-20, 38)
+    if len(node) > 28: node = node[:26]+".."
+    card(d, 10, 40, W-20, 44)
     d.text((20, 44), "NODE", fill=TX3, font=F["r10"])
-    d.text((70, 42), node, fill=TX, font=F["b16"])
+    d.text((70, 42), node, fill=TX, font=F["b18"])
 
-    # Traffic bar
-    y0 = 84
-    card(d, 10, y0, W-20, 40)
+    # Traffic with progress bar — prominent
+    y0 = 92
     tu = cl.get("traffic_used", "")
     tt = cl.get("traffic_total", "")
-    d.text((20, y0+4), "TRAFFIC", fill=TX3, font=F["r10"])
+    card(d, 10, y0, W-20, 56)
+    d.text((20, y0+6), "TRAFFIC", fill=TX3, font=F["r10"])
     if tu and tt:
-        d.text((100, y0+4), f"{tu} / {tt}", fill=TX, font=F["b14"])
+        d.text((20, y0+24), f"{tu} / {tt}", fill=TX, font=F["b20"])
         tp = 0
         try:
             parts = tu.split()
@@ -284,44 +287,37 @@ def pg_clash(cl):
                 den = float(den_s) if den_s else 0
                 tp = num/den if den > 0 else 0
         except: tp = 0
-        bar(d, 20, y0+24, W-40, 10, min(tp, 1.0), ac, radius=5)
+        bar(d, 20, y0+42, W-40, 8, min(tp, 1.0), ac, radius=4)
     else:
-        d.text((100, y0+6), "N/A", fill=TX3, font=F["r14"])
+        d.text((20, y0+24), "N/A", fill=TX3, font=F["r18"])
 
-    # Upload + Download
-    y1 = 132
-    hw = (W-30)//2
-    card(d, 10, y1, hw, 40)
-    d.text((20, y1+4), "UPLOAD", fill=AC["api"], font=F["r10"])
-    d.text((20, y1+20), fmtb(cl.get("upload_total",0)), fill=AC["api"], font=F["b16"])
-
-    card(d, 20+hw, y1, hw, 40)
-    d.text((30+hw, y1+4), "DOWNLOAD", fill=ac, font=F["r10"])
-    d.text((30+hw, y1+20), fmtb(cl.get("download_total",0)), fill=ac, font=F["b16"])
-
-    # Expire + Mode + Connections
-    y2 = 180
+    # Expire + Mode + Connections — 3 columns
+    y1 = 158
     cw3 = (W-40)//3
-    card(d, 10, y2, cw3, 40)
-    d.text((18, y2+4), "EXPIRE", fill=TX3, font=F["r10"])
+    card(d, 10, y1, cw3, 44)
+    d.text((18, y1+6), "EXPIRE", fill=TX3, font=F["r10"])
     exp = cl.get("expire_date", "") or "N/A"
-    if len(exp) > 14: exp = exp[:12]+".."
-    d.text((18, y2+20), exp, fill=AC["wthr"], font=F["b13"])
+    if len(exp) > 12: exp = exp[:10]+".."
+    d.text((18, y1+24), exp, fill=AC["wthr"], font=F["b14"])
 
-    card(d, 20+cw3, y2, cw3, 40)
-    d.text((28+cw3, y2+4), "MODE", fill=TX3, font=F["r10"])
-    d.text((28+cw3, y2+20), cl.get("mode","Rule"), fill=AC["codex"], font=F["b13"])
+    card(d, 20+cw3, y1, cw3, 44)
+    d.text((28+cw3, y1+6), "MODE", fill=TX3, font=F["r10"])
+    d.text((28+cw3, y1+24), cl.get("mode","Rule"), fill=AC["codex"], font=F["b14"])
 
-    card(d, 30+2*cw3, y2, cw3, 40)
-    d.text((38+2*cw3, y2+4), "CONNS", fill=TX3, font=F["r10"])
-    d.text((38+2*cw3, y2+20), str(cl.get("active_connections",0)), fill=TX, font=F["b16"])
+    card(d, 30+2*cw3, y1, cw3, 44)
+    d.text((38+2*cw3, y1+6), "CONNS", fill=TX3, font=F["r10"])
+    conns_val = str(cl.get("active_connections", 0))
+    tw_c = d.textlength(conns_val, font=F["b24"])
+    d.text((30+2*cw3+(cw3-tw_c)//2, y1+16), conns_val, fill=ac, font=F["b24"])
 
     # Updated time
-    y3 = 228
+    y2 = 212
     upd = cl.get("update_time", "")
-    if upd:
-        card(d, 10, y3, W-20, 28)
-        d.text((20, y3+6), f"Updated: {upd}", fill=TX3, font=F["r10"])
+    card(d, 10, y2, W-20, 28)
+    d.text((20, y2+6), f"Updated: {upd}", fill=TX3, font=F["r10"])
+    ver_long = cl.get("version", "?")
+    tw_v = d.textlength(ver_long, font=F["r10"])
+    d.text((W-24-tw_v, y2+6), ver_long, fill=TX3, font=F["r10"])
 
     nav(d, 2, TOTAL_PAGES, ac)
     return img
@@ -337,42 +333,45 @@ def pg_codex(cx):
     ac = AC["codex"]
     hdr(d, "CODEX", ac, bg)
 
-    # Two large percentage arc gauges — color changes by pct
-    gy = 112
-    for i, (label, key, mx) in enumerate([
-        ("5 Hour", "tokens_5h", 2_000_000),
-        ("7 Day", "tokens_7d", 10_000_000),
+    # Two token count cards — big numbers with labels
+    y0 = 42
+    for i, (label, key) in enumerate([
+        ("5  HOUR", "tokens_5h"),
+        ("7  DAY", "tokens_7d"),
     ]):
-        x = 130 + i * 220
+        by = y0 + i * 72
         tok = cx.get(key, 0)
-        pct = min(tok/mx, 1.0) if tok > 0 else 0
-        pct_int = int(pct * 100)
-        color = pct_color(pct)
-        arc_g(d, x, gy, 50, pct, color, width=14)
-        # Large percentage in center
-        vs = f"{pct_int}%"
-        tw = d.textlength(vs, font=F["b36"])
-        d.text((x-tw//2, gy-22), vs, fill=color, font=F["b36"])
-        # Token count
         ts = fmt_tk(tok)
-        tw2 = d.textlength(ts, font=F["r10"])
-        d.text((x-tw2//2, gy+22), ts, fill=TX3, font=F["r10"])
-        # Label
-        tw3 = d.textlength(label, font=F["r13"])
-        d.text((x-tw3//2, gy+56), label, fill=TX2, font=F["r13"])
+        card(d, 10, by, W-20, 62)
+        d.text((20, by+6), label, fill=ac, font=F["b14"])
+        # Big token number — right aligned
+        tw = d.textlength(ts, font=F["b30"])
+        d.text((W-24-tw, by+14), ts, fill=ac, font=F["b30"])
+        d.text((W-24-d.textlength("tokens",font=F["r10"]), by+42), "tokens", fill=TX3, font=F["r10"])
+
+    # Mini accent bars for visual interest
+    bar_y = 194
+    for i, (label, key, color) in enumerate([
+        ("5H", "tokens_5h", ac),
+        ("7D", "tokens_7d", AC["api"]),
+    ]):
+        bx = 14 + i * (W//2)
+        tok = cx.get(key, 0)
+        d.text((bx, bar_y-4), label, fill=color, font=F["r10"])
+        bar_w = (W//2) - 24
+        # Use a fixed big scale so bars are always visible
+        scale = max(tok, 500_000_000)
+        bar(d, bx, bar_y+8, bar_w, 6, min(tok/scale, 1.0), color, radius=3)
 
     # Model + Reset
-    y0 = 196
-    card(d, 10, y0, W-20, 34)
-    d.text((20, y0+8), "MODEL", fill=TX3, font=F["r10"])
+    y2 = 216
+    card(d, 10, y2, W-20, 50)
+    d.text((20, y2+6), "MODEL", fill=TX3, font=F["r10"])
     model = cx.get("model", "?")
-    if len(model) > 28: model = model[:26]+".."
-    d.text((80, y0+8), model, fill=ac, font=F["b14"])
-
-    y1 = 238
-    card(d, 10, y1, W-20, 30)
-    d.text((20, y1+6), "RESET", fill=TX3, font=F["r10"])
-    d.text((80, y1+5), cx.get("reset_time","?"), fill=AC["wthr"], font=F["r12"])
+    if len(model) > 26: model = model[:24]+".."
+    d.text((20, y2+22), model, fill=TX2, font=F["b16"])
+    d.text((W//2+4, y2+6), "RESET", fill=TX3, font=F["r10"])
+    d.text((W//2+4, y2+22), cx.get("reset_time","?"), fill=AC["wthr"], font=F["b14"])
 
     nav(d, 3, TOTAL_PAGES, ac)
     return img
