@@ -266,7 +266,7 @@ def get_apis():
 
     # MiniMi stats — token plan usage percentage (with calibration offset)
     MM_TOKEN_PLAN = 4_100_000_000    # 4.1B tokens
-    MM_CALIB_OFFSET = 791960510      # calibration: real_used - db_seen at 2026-06-11
+    MM_CALIB_OFFSET = 3022180996     # real_used(3,032,234,857) - db_seen at 2026-06-18      # calibration: real_used - db_seen at 2026-06-11
     try:
         db3 = sqlite3.connect(f"file:{CCSWITCH_DB}?mode=ro", uri=True, timeout=2)
         row = db3.execute(
