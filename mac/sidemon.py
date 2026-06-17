@@ -374,10 +374,10 @@ def get_clash():
 
     conns = _mihomo("/connections")
     if conns:
-        d["active_connections"] = len(conns.get("connections", []))
-        # Sum upload/download from active connections
-        total_up = sum(c.get("upload", 0) for c in conns.get("connections", []))
-        total_dn = sum(c.get("download", 0) for c in conns.get("connections", []))
+        conn_list = conns.get("connections") or []
+        d["active_connections"] = len(conn_list)
+        total_up = sum(c.get("upload", 0) for c in conn_list)
+        total_dn = sum(c.get("download", 0) for c in conn_list)
         d["upload_total"] = total_up
         d["download_total"] = total_dn
 
@@ -684,7 +684,7 @@ class SenderService:
                 node = payload.get("clash", {}).get("current_node", "?")[:25]
                 balance = payload.get("ccswitch", {}).get("ds_balance", "?")
                 self._emit_status(
-                    f"{'OK' if ok else 'ERR'} {cfg['host']} pages:{len(cfg['pages'])} "
+                    f"{'OK' if ok else 'ERR'} {cfg['host']} pages:{len(cfg.get('pages') or [])} "
                     f"node:{node} ds:{balance}"
                 )
                 time.sleep(cfg["interval"])
