@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SideMon Mac sender — system / proxy / clash / codex / weather → Pi Zero W."""
 
-import argparse, copy, datetime, json, os, re, socket, sqlite3, subprocess, sys, threading, time
+import argparse, base64, copy, datetime, json, os, re, socket, sqlite3, subprocess, sys, struct, threading, time
 
 try: import psutil, requests
 except ImportError: print("pip3 install psutil requests"); sys.exit(1)
@@ -30,6 +30,9 @@ MINIMI_BASE = "https://api.xiaomimimo.com"
 WEATHER_CITY = "Guangzhou"
 OMLX_HEALTH_URL = "http://127.0.0.1:9876/health"
 OMLX_STATS = os.path.expanduser("~/.omlx/stats.json")
+# Codex usage caps — tunable in settings UI
+CODEX_CAP_5H = 5_000_000_000     # 5-hour rolling cap
+CODEX_CAP_7D = 35_000_000_000    # 7-day rolling cap
 
 
 def default_config():
@@ -47,6 +50,8 @@ def default_config():
         "weather_city": "Guangzhou",
         "omlx_health_url": "http://127.0.0.1:9876/health",
         "omlx_stats": "~/.omlx/stats.json",
+        "codex_cap_5h": 5_000_000_000,
+        "codex_cap_7d": 35_000_000_000,
     }
 
 
@@ -124,7 +129,7 @@ def save_config(cfg, path=CONFIG_FILE):
 _last_sk = [""]
 def apply_runtime_config(cfg):
     global MIHOMO, CODEX_DB, CCSWITCH_DB, DEEPSEEK_KEY, MINIMI_KEY, MINIMI_BASE
-    global WEATHER_CITY, OMLX_HEALTH_URL, OMLX_STATS
+    global WEATHER_CITY, OMLX_HEALTH_URL, OMLX_STATS, CODEX_CAP_5H, CODEX_CAP_7D
     global _ccswitch_cache, _clash_cache, _codex_cache
     cfg = normalize_config(cfg)
     # Clear caches if API config changed
@@ -143,6 +148,9 @@ def apply_runtime_config(cfg):
     WEATHER_CITY = cfg["weather_city"] or "Guangzhou"
     OMLX_HEALTH_URL = cfg["omlx_health_url"] or "http://127.0.0.1:9876/health"
     OMLX_STATS = os.path.expanduser(cfg["omlx_stats"])
+    # Codex usage caps
+    CODEX_CAP_5H = max(1, _coerce_int(cfg.get("codex_cap_5h"), 5_000_000_000))
+    CODEX_CAP_7D = max(1, _coerce_int(cfg.get("codex_cap_7d"), 35_000_000_000))
     return cfg
 
 # ══════════════════════════════════════════════════════════════════════
@@ -345,11 +353,20 @@ def _mihomo(path):
         return None
 
 def _mihomo_node():
+    """Get current node: GLOBAL if proxied, else fall back to Proxies group."""
     px = _mihomo("/proxies")
-    if px:
-        g = px.get("proxies", {}).get("GLOBAL", {})
-        return g.get("now", None)
-    return None
+    if not px: return None
+    proxies = px.get("proxies", {})
+    g = proxies.get("GLOBAL", {})
+    now = g.get("now", None)
+    # If GLOBAL is DIRECT/REJECT, look at Proxies or other groups
+    if now in (None, "DIRECT", "REJECT"):
+        # Try Proxies group first (common parent proxy group)
+        for grp_name in ("Proxies", "HK", "US", "SG", "JP", "TW"):
+            grp = proxies.get(grp_name)
+            if grp and grp.get("now") and grp["now"] not in ("DIRECT", "REJECT"):
+                return grp["now"]
+    return now
 
 _clash_cache = {"ts": 0, "data": None}
 
@@ -371,10 +388,11 @@ def get_clash():
     cfg = _mihomo("/configs")
     if cfg: d["mode"] = cfg.get("mode", "Rule")
 
-    # Use /proxies/GLOBAL directly (smaller response, won't truncate)
+    # Use _mihomo_node() for smart node detection (falls back to active proxy if DIRECT)
+    d["current_node"] = _mihomo_node() or "Unknown"
+    # Get GLOBAL for traffic/expire info
     g = _mihomo("/proxies/GLOBAL")
     if g:
-        d["current_node"] = g.get("now", "Unknown")
         all_names = g.get("all", [])
         for name in all_names:
             if name.startswith("Traffic:"):
@@ -400,7 +418,126 @@ def get_clash():
 # Codex usage
 # ══════════════════════════════════════════════════════════════════════
 
+# Codex usage via app-server WebSocket (accurate rate limits from Codex backend)
+import struct as _struct
+
+_codex_proc = None
+_codex_port = 0
 _codex_cache = {"ts": 0, "data": None}
+
+def _ws_handshake(s, port):
+    key = base64.b64encode(os.urandom(16)).decode()
+    req = (
+        f"GET / HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{port}\r\n"
+        f"Upgrade: websocket\r\n"
+        f"Connection: Upgrade\r\n"
+        f"Sec-WebSocket-Key: {key}\r\n"
+        f"Sec-WebSocket-Version: 13\r\n\r\n"
+    )
+    s.sendall(req.encode())
+    resp = b""
+    while b"\r\n\r\n" not in resp:
+        chunk = s.recv(4096)
+        if not chunk: break
+        resp += chunk
+    if b" 101 " not in resp.split(b"\r\n", 1)[0]:
+        raise Exception("WebSocket handshake failed")
+
+def _ws_send_json(s, data):
+    payload = json.dumps(data).encode()
+    frame = bytearray([0x81])
+    length = len(payload)
+    if length < 126:
+        frame.append(0x80 | length)
+    elif length < 65536:
+        frame.append(0x80 | 126)
+        frame.extend(length.to_bytes(2, 'big'))
+    else:
+        frame.append(0x80 | 127)
+        frame.extend(length.to_bytes(8, 'big'))
+    mask_key = os.urandom(4)
+    frame.extend(mask_key)
+    masked = bytearray(payload)
+    for i in range(length):
+        masked[i] ^= mask_key[i % 4]
+    frame.extend(masked)
+    s.sendall(bytes(frame))
+
+def _ws_recv_json(s):
+    hdr = s.recv(2)
+    if len(hdr) < 2: return {}
+    length = hdr[1] & 0x7F
+    if length == 126:
+        length = int.from_bytes(s.recv(2), 'big')
+    elif length == 127:
+        length = int.from_bytes(s.recv(8), 'big')
+    data = bytearray()
+    while len(data) < length:
+        chunk = s.recv(length - len(data))
+        if not chunk: break
+        data.extend(chunk)
+    return json.loads(data.decode()) if data else {}
+
+def _start_codex_server():
+    global _codex_proc, _codex_port
+    if _codex_proc and _codex_proc.poll() is None:
+        return  # Already running
+    # Find codex binary
+    codex_bin = None
+    for path in [
+        "/Applications/Codex.app/Contents/Resources/codex",
+        os.path.expanduser("~/Library/Application Support/QClaw/npm-global/bin/codex"),
+    ]:
+        if os.path.exists(path):
+            codex_bin = path
+            break
+    if not codex_bin:
+        raise Exception("codex binary not found")
+    # Find free port
+    s = socket.socket()
+    s.bind(('127.0.0.1', 0))
+    _codex_port = s.getsockname()[1]
+    s.close()
+    _codex_proc = subprocess.Popen(
+        [codex_bin, "app-server", "--listen", f"ws://127.0.0.1:{_codex_port}"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    time.sleep(3)  # Wait for server start
+
+def _query_codex_limits():
+    global _codex_port
+    try:
+        _start_codex_server()
+        with socket.create_connection(("127.0.0.1", _codex_port), timeout=10) as s:
+            _ws_handshake(s, _codex_port)
+            _ws_send_json(s, {
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {
+                    "clientInfo": {"name": "sidemon", "title": "SideMon", "version": "1"},
+                    "capabilities": {"experimentalApi": True, "requestAttestation": False},
+                },
+            })
+            _ws_recv_json(s)  # init response
+            _ws_send_json(s, {
+                "jsonrpc": "2.0", "id": 2,
+                "method": "account/rateLimits/read",
+                "params": None,
+            })
+            deadline = time.monotonic() + 8
+            while time.monotonic() < deadline:
+                s.settimeout(max(0.1, deadline - time.monotonic()))
+                msg = _ws_recv_json(s)
+                if msg.get("id") == 2:
+                    if "error" in msg:
+                        raise Exception(str(msg["error"]))
+                    result = msg.get("result", {})
+                    rl = result.get("rateLimits", result)
+                    return rl
+            raise Exception("rate limits timeout")
+    except Exception as e:
+        print(f"Codex WS error: {e}", file=sys.stderr)
+        return None
 
 def get_codex():
     global _codex_cache
@@ -409,30 +546,30 @@ def get_codex():
         return _codex_cache["data"]
 
     result = {
+        "pct_5h": 0, "pct_7d": 0,
         "tokens_5h": 0, "tokens_7d": 0,
-        "reset_time": "", "model": "deepseek-v4-pro",
+        "reset_5h": "", "reset_7d": "",
+        "model": "codex",
+        "plan": "plus",
     }
-    try:
-        now_ms = int(time.time() * 1000)
-        db = sqlite3.connect(f"file:{CODEX_DB}?mode=ro", uri=True, timeout=2)
-        db.row_factory = sqlite3.Row
-        r = db.execute("SELECT COALESCE(SUM(tokens_used),0) as t FROM threads WHERE updated_at_ms >= ?",
-                       (now_ms - 5*3600*1000,)).fetchone()
-        result["tokens_5h"] = r["t"]
-        r = db.execute("SELECT COALESCE(SUM(tokens_used),0) as t FROM threads WHERE updated_at_ms >= ?",
-                       (now_ms - 7*86400*1000,)).fetchone()
-        result["tokens_7d"] = r["t"]
-        r = db.execute("SELECT model FROM threads ORDER BY updated_at_ms DESC LIMIT 1").fetchone()
-        if r and r["model"]: result["model"] = r["model"]
-        db.close()
-    except: pass
 
-
-
-    from datetime import datetime, timezone, timedelta
-    utc = datetime.now(timezone.utc)
-    rst = utc.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    result["reset_time"] = rst.strftime("%m/%d %H:%M UTC")
+    rl = _query_codex_limits()
+    if rl:
+        primary = rl.get("primary", {})
+        secondary = rl.get("secondary", {})
+        result["pct_5h"] = primary.get("usedPercent", 0)
+        result["pct_7d"] = secondary.get("usedPercent", 0)
+        result["plan"] = rl.get("planType", "plus")
+        # Convert reset timestamps
+        from datetime import datetime, timezone
+        if primary.get("resetsAt"):
+            dt = datetime.fromtimestamp(primary["resetsAt"], tz=timezone.utc)
+            result["reset_5h"] = dt.astimezone().strftime("%H:%M")
+        if secondary.get("resetsAt"):
+            dt = datetime.fromtimestamp(secondary["resetsAt"], tz=timezone.utc)
+            result["reset_7d"] = dt.astimezone().strftime("%m/%d %H:%M")
+        result["tokens_5h"] = primary.get("usedPercent", 0)  # for backward compat
+        result["tokens_7d"] = secondary.get("usedPercent", 0)
 
     _codex_cache = {"ts": now, "data": result}
     return result

@@ -1,143 +1,128 @@
 # RpiZeroMon
 
-> 树莓派 Zero W + 3.5 寸 GPIO 屏幕 = 一台精美的 Mac 状态副屏
+> 树莓派 Zero W + 3.5 寸 GPIO 屏幕 = 一台精美的 Mac 副屏监控仪表盘
 
-通过 USB/网络将 Mac 的系统状态、API 用量、代理信息等实时推送到树莓派 Zero W 的 3.5 寸 SPI 屏幕上，6 个页面每 15 秒自动轮播。
+Mac 端实时采集系统状态、API 用量、Clash 代理、Codex 额度、天气、日期时间等信息，通过 TCP 推送到树莓派 Zero W 的 3.5 寸 SPI 屏幕（480×320），使用 Pillow 高质量渲染，6 个页面每 15 秒自动轮播。
 
-## 页面展示
+## 📸 页面展示
 
 | 系统状态 | API 用量 |
 |----------|----------|
-| ![](screenshots/system.png) | ![](screenshots/ccswitch.png) |
+| ![系统状态](screenshots/01_system.png) | ![API 用量](screenshots/02_ccswitch.png) |
 
-| Clash 代理 | Codex 用量 |
+| 天气 | 日期时间 |
+|------|----------|
+| ![天气](screenshots/03_weather.png) | ![日期时间](screenshots/04_datetime.png) |
+
+| Clash 代理 | Codex 额度 |
 |------------|------------|
-| ![](screenshots/clash.png) | ![](screenshots/codex.png) |
+| ![Clash](screenshots/05_clash.png) | ![Codex](screenshots/06_codex.png) |
 
-| 天气 | oMLX 本地模型 |
-|------|---------------|
-| ![](screenshots/weather.png) | ![](screenshots/omlx.png) |
-
-## 架构
+## 🏗 架构
 
 ```
-┌─────────────┐    TCP:9877     ┌──────────────────┐
-│  Mac 发送端  │ ──────────────→ │  树莓派 Zero W    │
-│  sidemon.py  │   每秒推送 JSON  │  sidemon-pil.py   │
-│              │                 │  PIL 渲染到 /dev/fb0 │
-└─────────────┘                 └──────────────────┘
-                                      │
-                                      ↓
-                                3.5" SPI 屏幕
-                                (480×320, 旋转 180°)
+┌──────────────────┐     TCP :9877      ┌─────────────────────┐
+│   Mac 发送端       │ ─────────────────→ │  树莓派 Zero W       │
+│   RpiZeroMon.app  │   每秒推送 JSON     │  sidemon-pil.py      │
+│                    │                    │  渲染到 /dev/fb0      │
+│  采集源:           │                    │  480×320 旋转 180°   │
+│  · psutil          │                    └─────────────────────┘
+│  · codex app-server│
+│  · Clash socket    │
+│  · DeepSeek API    │
+│  · MiMo API        │
+│  · wttr.in 天气    │
+│  · oMLX 本地模型   │
+└──────────────────┘
 ```
 
-- **Mac 端**（`mac/sidemon.py`）：提供 macOS 设置窗口，采集系统状态、API 余额、Clash 代理、Codex 用量、天气、oMLX 等信息，打包为 JSON 通过 TCP 推送到 Pi
-- **Pi 端**（`pirecv/sidemon-pil.py`）：接收 JSON 数据，用 Pillow 渲染启用的页面到 framebuffer，15 秒轮播
-- **自动发现**：Pi 端通过 UDP 广播（端口 9878），Mac 端自动扫描局域网找到 Pi
+## 📦 页面说明
 
-## 6 个页面
+| 页面 | 标签 | 数据来源 | 说明 |
+|------|------|----------|------|
+| System | `system` | psutil | CPU / 内存 / 磁盘百分比圆环，Uptime / Load / Hostname |
+| API | `ccswitch` | DeepSeek API, MiMo API, CC Switch DB | 两组 API 余额/用量，当日 Token 统计 |
+| Weather | `weather` | wttr.in | 气温、体感温度、湿度、风向、3 日预报 |
+| DateTime | `datetime` | 本地时间 | 当前日期时间及月历 |
+| Clash | `clash` | Mihomo Socket | 代理节点、流量、到期日、模式、连接数 |
+| Codex | `codex` | Codex App-Server WebSocket | 5h/7d 用量百分比（实时官方数据）、重置时间 |
 
-| 页面 | 内容 | 数据来源 |
-|------|------|----------|
-| **SYSTEM** | CPU / 内存 / 磁盘 环形图，负载，网络，运行时间 | `psutil` |
-| **API USAGE** | DeepSeek 余额 + MiMo 当日 Token 用量，缓存命中率 | DeepSeek API + CC Switch 数据库 |
-| **CLASH** | 当前节点，已用/总流量，上传/下载，到期时间 | Mihomo Unix Socket API |
-| **CODEX** | 5 小时 / 7 天 Token 用量，重置时间 | Codex SQLite 数据库 |
-| **WEATHER** | 温度、体感、湿度、风速、最高/最低温 | wttr.in API |
-| **oMLX** | 请求数、Prompt/Completion Token、缓存效率、内存 | oMLX HTTP API + stats.json |
+## 🚀 快速开始
 
-## 快速开始
-
-### 硬件要求
-
-- 树莓派 Zero W（或任何树莓派）
-- 3.5 寸 GPIO SPI 屏幕（ILI9486 驱动）
-- Raspberry Pi OS Lite（无桌面环境）
-
-### 1. Pi 端安装
-
-屏幕驱动使用 [lcddiy/LCD-show](https://github.com/lcddiy/LCD-show)：
+### 树莓派 Zero W（显示端）
 
 ```bash
-git clone https://github.com/lcddiy/LCD-show.git
-cd LCD-show
-sudo ./LCD35-show
+# 1. 安装依赖
+sudo apt install python3-pil
+
+# 2. 上传代码并运行
+scp pirecv/sidemon-pil.py pi@192.168.1.x:/home/pi/sidemon/
+ssh pi@192.168.1.x
+sudo python3 /home/pi/sidemon/sidemon-pil.py --fb /dev/fb0 --cycle 15 &
 ```
 
-安装依赖并部署 sidemon-pil：
+### Mac（发送端）
+
+**方式一：双击运行（推荐）**
+
+下载 [Release](https://github.com/joshua76y/SideMon/releases) 中的 `RpiZeroMon.app`，放到桌面双击即可。首次启动会自动发现局域网内的显示端并弹出设置窗口。
+
+**方式二：命令行**
 
 ```bash
-sudo apt-get install -y python3-pip
-pip3 install pillow
-
-# 将 pirecv/sidemon-pil.py 复制到 /home/pi/
-# 创建 systemd 服务实现开机自启：
-sudo tee /etc/systemd/system/sidemon-pil.service << 'SVC'
-[Unit]
-Description=SideMon PIL SPI dashboard
-After=network.target
-
-[Service]
-ExecStart=/usr/bin/python3 /home/pi/sidemon-pil.py --fb /dev/fb0 --cycle 15
-Restart=always
-User=pi
-WorkingDirectory=/home/pi
-
-[Install]
-WantedBy=multi-user.target
-SVC
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now sidemon-pil
+pip3 install psutil requests
+python3 mac/sidemon.py --host 192.168.1.x -i 1
 ```
 
-### 2. Mac 端运行
+### 构建 macOS App
 
 ```bash
-# 安装依赖
-pip3 install psutil requests pyobjc
-
-# 运行发送端（自动发现 Pi 或手动指定 IP）
-python3 mac/sidemon.py --host 192.168.1.37 -i 1
-
-# 打开设置窗口（命令行调试）
-python3 mac/sidemon.py --ui
-```
-
-设置窗口可配置显示端 IP、端口、推送间隔、页面勾选与排序、DeepSeek/MiMo API key，以及 Clash/Codex/oMLX/天气数据源路径。配置保存到：
-
-```bash
-~/Library/Application Support/RpiZeroMon/config.json
-```
-
-### 3. 桌面 App
-
-```bash
-# 编译为 .app
 pip3 install py2app
 python3 setup.py py2app
-# 输出在 dist/RpiZeroMon.app，可拖到桌面双击运行
+cp -R dist/RpiZeroMon.app ~/Desktop/
 ```
 
-## 命令行参数
+## ⚙️ 配置
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `--host`, `-H` | Pi 的 IP 地址（自动发现失败时使用） | `192.168.1.24` |
-| `--port`, `-P` | TCP 端口 | `9877` |
-| `--interval`, `-i` | 数据推送间隔（秒） | `1.0` |
-| `--once`, `-1` | 单次采集并打印 JSON，不循环 | — |
-| `--ui` | 打开 macOS 设置窗口 | — |
-| `--no-ui` | 在打包 App 中强制使用 CLI 模式 | — |
-| `--pages` | 逗号分隔的页面 key，例如 `system,clash,weather` | 配置文件 |
-| `--ds-key` | DeepSeek API Key（也可设 `DEEPSEEK_KEY` 环境变量） | — |
-| `--mm-key` | MiMo API Key（也可设 `MINIMI_KEY` 环境变量） | — |
+设置文件位于 `~/Library/Application Support/RpiZeroMon/config.json`：
 
-## 一键部署脚本
+```json
+{
+  "host": "192.168.1.37",
+  "port": 9877,
+  "interval": 1.0,
+  "pages": ["system", "ccswitch", "weather", "datetime", "clash", "codex"],
+  "deepseek_key": "sk-...",
+  "mimo_key": "sk-...",
+  "mimo_base": "https://api.xiaomimimo.com",
+  "weather_city": "Guangzhou"
+}
+```
+
+- `pages`：勾选启用及排序，Pi 端只轮播这些页面
+- API Key 可通过 macOS App 设置窗口配置，或写入 JSON 文件
+- 显示端 IP 支持 UDP 自动发现，无需手动填写
+
+## 🔧 开发
 
 ```bash
-cd /Volumes/MACdata/Docs/Documents/SideMon && bash deploy_pi.sh
+# 语法检查
+python3 -m py_compile mac/sidemon.py pirecv/sidemon-pil.py
+
+# Mac 端单次测试（打印 JSON 不发送）
+python3 mac/sidemon.py --once --host 192.168.1.x
+
+# 部署到 Pi
+bash deploy_pi.sh
 ```
 
-自动完成：连接测试 → 停服务 → 上传代码 → 启服务 → 显示日志。
+## 📝 技术细节
+
+- **Codex 数据获取**：通过 `codex app-server` 的 WebSocket 接口（JSON-RPC `account/rateLimits/read`），直接拿到官方的 5 小时/7 天滑动窗口用量百分比和重置时间，数据与 Codex App 完全一致
+- **Clash 节点检测**：当 GLOBAL 组为 DIRECT 时自动回退到 Proxies 组显示实际代理节点
+- **屏幕渲染**：Pillow + 抗锯齿字体，每页面独立配色，圆环进度条根据百分比自动变色（绿→黄→橙→红）
+- **UDP 自动发现**：Pi 端每 5 秒广播 `{"type":"sidemon","port":9877}`，Mac 端监听后自动填入 IP
+
+## 📄 许可
+
+MIT License

@@ -1,6 +1,9 @@
+*.DS_Store
 build/
-.DS_Store
 dist/
 __pycache__/
 *.pyc
-installed-skills-and-plugins.md
+*.egg-info/
+RpiZeroMonCD
+/tmp/
+.DS_Store
