@@ -121,10 +121,19 @@ def save_config(cfg, path=CONFIG_FILE):
     return cfg
 
 
+_last_sk = [""]
 def apply_runtime_config(cfg):
     global MIHOMO, CODEX_DB, CCSWITCH_DB, DEEPSEEK_KEY, MINIMI_KEY, MINIMI_BASE
     global WEATHER_CITY, OMLX_HEALTH_URL, OMLX_STATS
+    global _ccswitch_cache, _clash_cache, _codex_cache
     cfg = normalize_config(cfg)
+    # Clear caches if API config changed
+    new_sk = f"{cfg.get('deepseek_key','')}|{cfg.get('mimo_key','')}|{cfg.get('mimo_base','')}"
+    if new_sk != _last_sk[0]:
+        _ccswitch_cache = {"ts": 0, "data": None}
+        _clash_cache = {"ts": 0, "data": None}
+        _codex_cache = {"ts": 0, "data": None}
+        _last_sk[0] = new_sk
     MIHOMO = os.path.expanduser(cfg["mihomo_socket"])
     CODEX_DB = os.path.expanduser(cfg["codex_db"])
     CCSWITCH_DB = os.path.expanduser(cfg["ccswitch_db"])
@@ -211,7 +220,11 @@ def build_payload(pages, collectors=None):
     for page in ordered:
         collector = collectors.get(page)
         if collector:
-            payload[page] = collector()
+            try:
+                payload[page] = collector()
+            except Exception as e:
+                print(f"Collector {page}: {e}", file=sys.stderr)
+                payload[page] = None
     return payload
 
 # ══════════════════════════════════════════════════════════════════════
@@ -266,7 +279,7 @@ def get_apis():
 
     # MiniMi stats — token plan usage percentage (with calibration offset)
     MM_TOKEN_PLAN = 4_100_000_000    # 4.1B tokens
-    MM_CALIB_OFFSET = 3022180996     # real_used(3,032,234,857) - db_seen at 2026-06-18      # calibration: real_used - db_seen at 2026-06-11
+    MM_CALIB_OFFSET = 3022180996     # real_used(3,032,234,857) - db_seen at 2026-06-18
     try:
         db3 = sqlite3.connect(f"file:{CCSWITCH_DB}?mode=ro", uri=True, timeout=2)
         row = db3.execute(
@@ -291,7 +304,7 @@ def get_apis():
         inp, out, cache_r, cache_c, cnt = row
         data["output_tokens"] = out
         data["total_tokens"] = inp + out
-        data["cache_hit_rate"] = round(cache_r / inp * 100, 1) if inp > 0 else 0
+        data["cache_hit_rate"] = min(round(cache_r / inp * 100, 1), 100.0) if inp > 0 else 0
         db2.close()
     except: pass
 

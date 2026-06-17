@@ -273,12 +273,18 @@ def pg_clash(cl):
     d.text((20, y0+4), "TRAFFIC", fill=TX3, font=F["r10"])
     if tu and tt:
         d.text((100, y0+4), f"{tu} / {tt}", fill=TX, font=F["b14"])
+        tp = 0
         try:
-            num = float(''.join(c for c in tu.split()[0] if c.isdigit() or c=='.'))
-            den = float(''.join(c for c in tt.split()[0] if c.isdigit() or c=='.'))
-            tp = num/den if den > 0 else 0
+            parts = tu.split()
+            if parts:
+                num_s = ''.join(c for c in parts[0] if c.isdigit() or c=='.')
+                num = float(num_s) if num_s else 0
+                parts2 = tt.split()
+                den_s = ''.join(c for c in (parts2[0] if parts2 else '0') if c.isdigit() or c=='.')
+                den = float(den_s) if den_s else 0
+                tp = num/den if den > 0 else 0
         except: tp = 0
-        bar(d, 20, y0+24, W-40, 10, tp, ac, radius=5)
+        bar(d, 20, y0+24, W-40, 10, min(tp, 1.0), ac, radius=5)
     else:
         d.text((100, y0+6), "N/A", fill=TX3, font=F["r14"])
 
