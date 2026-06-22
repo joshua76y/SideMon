@@ -379,36 +379,39 @@ def get_clash():
     d = {"running": False, "version": "", "mode": "Rule",
          "current_node": "Unknown", "traffic_used": "", "traffic_total": "",
          "expire_date": "", "upload_total": 0, "download_total": 0,
-         "active_connections": 0}
+         "active_connections": 0, "update_time": ""}
 
     ver = _mihomo("/version")
-    if not ver: return d
-    d["running"] = True; d["version"] = ver.get("version", "")
+    if not ver:
+        return d
+    d["running"] = True
+    d["version"] = ver.get("version", "")
 
     cfg = _mihomo("/configs")
-    if cfg: d["mode"] = cfg.get("mode", "Rule")
+    if cfg:
+        d["mode"] = cfg.get("mode", "Rule")
 
-    # Use _mihomo_node() for smart node detection (falls back to active proxy if DIRECT)
     d["current_node"] = _mihomo_node() or "Unknown"
-    # Get GLOBAL for traffic/expire info
+
     g = _mihomo("/proxies/GLOBAL")
     if g:
-        all_names = g.get("all", [])
-        for name in all_names:
+        for name in g.get("all", []):
+            if not isinstance(name, str):
+                continue
             if name.startswith("Traffic:"):
-                parts = name.replace("Traffic:", "").strip().split("/")
-                if len(parts) >= 2:
-                    d["traffic_used"] = parts[0].strip()
-                    d["traffic_total"] = parts[1].strip()
+                payload = name[len("Traffic:"):].strip()
+                if "/" in payload:
+                    d["traffic_used"], d["traffic_total"] = [x.strip() for x in payload.split("/", 1)]
             elif name.startswith("Expire:"):
-                d["expire_date"] = name.replace("Expire:", "").strip()
+                d["expire_date"] = name[len("Expire:"):].strip()
 
     conns = _mihomo("/connections")
     if conns:
         conn_list = conns.get("connections") or []
-        d["active_connections"] = len(conn_list)
-
-# /traffic is streaming, can't use here
+        if isinstance(conn_list, list):
+            d["active_connections"] = len(conn_list)
+            d["download_total"] = conns.get("downloadTotal", d["download_total"]) or 0
+            d["upload_total"] = conns.get("uploadTotal", d["upload_total"]) or 0
 
     d["update_time"] = datetime.datetime.now().strftime("%H:%M:%S")
     _clash_cache = {"ts": now, "data": d}
@@ -549,6 +552,7 @@ def get_codex():
         "pct_5h": 0, "pct_7d": 0,
         "tokens_5h": 0, "tokens_7d": 0,
         "reset_5h": "", "reset_7d": "",
+        "status": "offline",
         "model": "codex",
         "plan": "plus",
     }
@@ -557,10 +561,11 @@ def get_codex():
     if rl:
         primary = rl.get("primary", {})
         secondary = rl.get("secondary", {})
+        result["status"] = "online"
         result["pct_5h"] = primary.get("usedPercent", 0)
         result["pct_7d"] = secondary.get("usedPercent", 0)
         result["plan"] = rl.get("planType", "plus")
-        # Convert reset timestamps
+
         from datetime import datetime, timezone
         if primary.get("resetsAt"):
             dt = datetime.fromtimestamp(primary["resetsAt"], tz=timezone.utc)
@@ -568,7 +573,8 @@ def get_codex():
         if secondary.get("resetsAt"):
             dt = datetime.fromtimestamp(secondary["resetsAt"], tz=timezone.utc)
             result["reset_7d"] = dt.astimezone().strftime("%m/%d %H:%M")
-        result["tokens_5h"] = primary.get("usedPercent", 0)  # for backward compat
+
+        result["tokens_5h"] = primary.get("usedPercent", 0)
         result["tokens_7d"] = secondary.get("usedPercent", 0)
 
     _codex_cache = {"ts": now, "data": result}
