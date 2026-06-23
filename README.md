@@ -1,8 +1,8 @@
 # RpiZeroMon
 
-> 树莓派 Zero W + 3.5 寸 GPIO 屏幕 = 一台精美的 Mac 副屏监控仪表盘
+> Mac 副屏监控仪表盘：支持树莓派 Zero W（480×320）与 ESP32 CYD（320×240）两种显示端
 
-Mac 端实时采集系统状态、API 用量、Clash 代理、Codex 额度、天气、日期时间等信息，通过 TCP 推送到树莓派 Zero W 的 3.5 寸 SPI 屏幕（480×320），使用 Pillow 高质量渲染，6 个页面每 15 秒自动轮播。
+Mac 端实时采集系统状态、API 用量、Clash 代理、Codex 额度、天气、日期时间等信息，通过 TCP JSON 推送到显示端；树莓派端使用 Pillow 高质量渲染，ESP32 CYD 端使用 TFT_eSPI 直驱屏幕。两种显示端都支持 15 秒自动轮播，并通过 UDP 9878 广播被 Mac 端自动发现。
 
 ## 📸 页面展示
 
@@ -35,6 +35,22 @@ Mac 端实时采集系统状态、API 用量、Clash 代理、Codex 额度、天
 │  · oMLX 本地模型   │
 └──────────────────┘
 ```
+### ESP32 CYD（备选显示端）
+
+```
+┌──────────────────┐     TCP :9877      ┌─────────────────────┐
+│   Mac 发送端       │ ─────────────────→ │  ESP32 CYD           │
+│   RpiZeroMon.app  │   每秒推送 JSON     │  cyd/src/main.cpp    │
+│                    │                    │  TFT_eSPI 320×240    │
+│  UDP 9878 自动发现  │                    │  15 秒轮播           │
+└──────────────────┘                    └─────────────────────┘
+```
+
+- 固件目录：`cyd/`
+- 构建工具：PlatformIO
+- 屏幕：320×240，ILI9341，TFT_eSPI 直驱
+- 协议：复用 Mac sender 的 TCP JSON payload，支持 `_control.pages`
+- 自动发现：固件启动后通过 UDP 9878 广播 `{"type":"sidemon","port":9877}`
 
 ## 📦 页面说明
 
@@ -48,6 +64,23 @@ Mac 端实时采集系统状态、API 用量、Clash 代理、Codex 额度、天
 | Codex | `codex` | Codex App-Server WebSocket | 5h/7d 用量百分比（实时官方数据）、重置时间 |
 
 ## 🚀 快速开始
+### ESP32 CYD（固件构建/烧录）
+
+```bash
+cd cyd
+# 先在 platformio.ini 中配置 WiFi SSID/密码（build_flags），或后续改为串口/配网方式
+pio run -e cyd
+# 烧录
+pio run -e cyd -t upload
+```
+
+首次启动后：
+1. 固件会先显示 `Waiting for data` 和本机 IP。
+2. Mac sender 通过 UDP 9878 发现 CYD，然后建立 TCP 连接并推送 payload。
+3. 页面会按 `_control.pages` 轮播；如未收到控制字段，则使用默认 7 页顺序。
+
+> 注意：当前 CYD 固件使用编译期 WiFi 配置。如果你希望更灵活，可以后续再加 WiFiManager/串口配网。
+
 
 ### 树莓派 Zero W（显示端）
 
