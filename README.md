@@ -68,7 +68,7 @@ Mac 端实时采集系统状态、API 用量、Clash 代理、Codex 额度、天
 
 ```bash
 cd cyd
-# 先在 platformio.ini 中配置 WiFi SSID/密码（build_flags），或后续改为串口/配网方式
+# 先在 platformio.ini 的 build_flags 中配置 SIDEMON_DEFAULT_SSID / SIDEMON_DEFAULT_PASS
 pio run -e cyd
 # 烧录
 pio run -e cyd -t upload
