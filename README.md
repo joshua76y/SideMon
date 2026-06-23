@@ -79,7 +79,7 @@ pio run -e cyd -t upload
 2. Mac sender 通过 UDP 9878 发现 CYD，然后建立 TCP 连接并推送 payload。
 3. 页面会按 `_control.pages` 轮播；如未收到控制字段，则使用默认 7 页顺序。
 
-> CYD 固件已内置 WiFiManager 自动配网：首次上电或未配置 WiFi 时会启动 `SideMon-CYD` 热点（密码 `sidemon1234`），在手机或电脑浏览器打开 `192.168.4.1` 配网即可；配网成功后凭据会自动保存，后续重启直接重连，不需要重新编译固件。
+> CYD 固件已内置 WiFiManager 自动配网：首次上电或未配置 WiFi 时，屏幕会立即显示引导画面，提示你连接开放热点 `SideMon-CYD`，然后在浏览器打开 `192.168.4.1` 选择家里 WiFi 即可。配网成功后凭据会自动保存，后续重启直接重连，不需要重新编译固件。
 
 
 ### 树莓派 Zero W（显示端）

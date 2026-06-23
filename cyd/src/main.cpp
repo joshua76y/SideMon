@@ -3,16 +3,14 @@
 #include <WiFiUdp.h>
 #include <TFT_eSPI.h>
 #include <ArduinoJson.h>
+#include <WiFiManager.h>
 #include <math.h>
 
-#ifndef SIDEMON_DEFAULT_SSID
-#define SIDEMON_DEFAULT_SSID "SSID"
-#endif
-#ifndef SIDEMON_DEFAULT_PASS
-#define SIDEMON_DEFAULT_PASS "PASSWORD"
-#endif
 #ifndef SIDEMON_DEFAULT_PORT
 #define SIDEMON_DEFAULT_PORT 9877
+#endif
+#ifndef SIDEMON_AP_NAME
+#define SIDEMON_AP_NAME "SideMon-CYD"
 #endif
 
 static const uint16_t W = 320;
@@ -51,6 +49,7 @@ TFT_eSPI tft = TFT_eSPI();
 
 struct AppState {
   bool wifiReady = false;
+  bool portalRunning = false;
   bool hasData = false;
   unsigned long lastRender = 0;
   unsigned long lastDiscovery = 0;
@@ -549,6 +548,28 @@ static void handleStreamData() {
   }
 }
 
+static void showProvisionHint(const char* line2, const char* line3) {
+  tft.fillScreen(PAGE_BGS[0]);
+  tft.fillRect(0, 0, W, 28, COL_PANEL);
+  tft.fillRect(0, 0, 5, 28, COL_DATETIME);
+  tft.setTextColor(COL_DATETIME, COL_PANEL); tft.setTextSize(2); tft.setCursor(12, 6); tft.print("SIDEMON");
+  tft.setTextColor(COL_TEXT, PAGE_BGS[0]); tft.setTextSize(3); tft.setCursor(20, 56); tft.print("WiFi Setup");
+  tft.setTextColor(COL_TEXT2, PAGE_BGS[0]); tft.setTextSize(2);
+  tft.setCursor(20, 96); tft.print(line2);
+  tft.setCursor(20, 122); tft.print(line3);
+  tft.setTextColor(COL_TEXT3, PAGE_BGS[0]); tft.setTextSize(1); tft.setCursor(20, 154); tft.print("Open http://192.168.4.1 in a browser");
+}
+
+static void startPortal() {
+  if (app.portalRunning) return;
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(0);
+  showProvisionHint("Connect AP: SideMon-CYD", "Open 192.168.4.1");
+  app.portalRunning = true;
+  wm.startConfigPortal(SIDEMON_AP_NAME);
+  app.portalRunning = false;
+}
+
 static void connectWifi() {
   if (WiFi.status() == WL_CONNECTED) {
     app.wifiReady = true;
@@ -556,16 +577,21 @@ static void connectWifi() {
   }
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
-  WiFi.begin(SIDEMON_DEFAULT_SSID, SIDEMON_DEFAULT_PASS);
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
-    delay(250);
-  }
-  app.wifiReady = WiFi.status() == WL_CONNECTED;
+  showProvisionHint("Connecting WiFi...", "Please wait");
+  WiFiManager wm;
+  wm.setConnectTimeout(12000);
+  wm.setConnectRetries(3);
+  bool connected = wm.autoConnect(SIDEMON_AP_NAME);
+  app.wifiReady = connected && WiFi.status() == WL_CONNECTED;
   if (app.wifiReady) {
     Serial.printf("WiFi connected: %s\n", WiFi.localIP().toString().c_str());
   } else {
-    Serial.println("WiFi connect timeout");
+    Serial.println("WiFi connect failed, starting config portal...");
+    startPortal();
+    app.wifiReady = WiFi.status() == WL_CONNECTED;
+    if (app.wifiReady) {
+      Serial.printf("WiFi configured: %s\n", WiFi.localIP().toString().c_str());
+    }
   }
 }
 
@@ -597,8 +623,13 @@ void setup() {
   tft.print("SideMon CYD booting...");
 
   resetAppState();
+  showProvisionHint("Checking WiFi...", "Please wait");
   connectWifi();
   renderWaiting();
+  if (!app.wifiReady) {
+    startPortal();
+    renderWaiting();
+  }
 }
 
 void loop() {
