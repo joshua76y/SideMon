@@ -7,3 +7,4 @@ __pycache__/
 RpiZeroMonCD
 /tmp/
 .DS_Store
+cyd/.pio/

@@ -37,8 +37,7 @@ CODEX_CAP_7D = 35_000_000_000    # 7-day rolling cap
 
 def default_config():
     return {
-        "host": "192.168.1.37",
-        "port": 9877,
+        "hosts": [],
         "interval": 1.0,
         "pages": list(DEFAULT_PAGES),
         "deepseek_key": "",
@@ -52,6 +51,7 @@ def default_config():
         "omlx_stats": "~/.omlx/stats.json",
         "codex_cap_5h": 5_000_000_000,
         "codex_cap_7d": 35_000_000_000,
+        "page_interval": 15,
     }
 
 
@@ -95,9 +95,25 @@ def normalize_config(raw):
     cfg = default_config()
     if isinstance(raw, dict):
         cfg.update(raw)
-    cfg["host"] = str(cfg.get("host") or default_config()["host"]).strip() or default_config()["host"]
-    cfg["port"] = max(1, min(65535, _coerce_int(cfg.get("port"), default_config()["port"])))
+    # Backward compat: migrate old host/port to hosts list
+    hosts = cfg.get("hosts", None)
+    if not hosts and cfg.get("host"):
+        hosts = [{"host": str(cfg.get("host", "")).strip(), "port": _coerce_int(cfg.get("port"), 9877)}]
+    elif isinstance(hosts, list) and hosts and isinstance(hosts[0], str):
+        hosts = [{"host": h.strip(), "port": _coerce_int(cfg.get("port"), 9877)} for h in hosts if h.strip()]
+    if not hosts or not isinstance(hosts, list):
+        hosts = [{"host": "192.168.1.37", "port": 9877}]
+    cfg["hosts"] = []
+    for h in hosts:
+        if isinstance(h, dict) and h.get("host", "").strip():
+            cfg["hosts"].append({
+                "host": str(h["host"]).strip(),
+                "port": max(1, min(65535, _coerce_int(h.get("port"), 9877))),
+            })
+    if not cfg["hosts"]:
+        cfg["hosts"] = [{"host": "192.168.1.37", "port": 9877}]
     cfg["interval"] = max(0.2, _coerce_float(cfg.get("interval"), default_config()["interval"]))
+    cfg["page_interval"] = max(3, _coerce_int(cfg.get("page_interval"), default_config()["page_interval"]))
     cfg["pages"] = normalize_page_list(cfg.get("pages"))
     for key in [
         "deepseek_key", "mimo_key", "mimo_base", "ccswitch_db", "mihomo_socket",
@@ -221,10 +237,12 @@ def default_collectors(net_rx=0, net_tx=0):
     }
 
 
-def build_payload(pages, collectors=None):
+def build_payload(cfg, collectors=None):
+    pages = cfg.get("pages", list(DEFAULT_PAGES))
     ordered = normalize_page_list(pages)
     collectors = collectors or default_collectors()
-    payload = {"_control": {"pages": ordered}}
+    pi = max(2, int(cfg.get("interval", 5)))
+    payload = {"_control": {"pages": ordered, "page_interval": pi}}
     for page in ordered:
         collector = collectors.get(page)
         if collector:
@@ -725,8 +743,8 @@ def get_weather():
 
 DISCOVERY_PORT = 9878
 
-def _discover_pi(tcp_port, wait_secs=8.0):
-    """Listen for SideMon UDP broadcasts; try for wait_secs, return Pi IP or None."""
+def _discover_all(tcp_port=9877, wait_secs=8.0):
+    """Listen for SideMon UDP broadcasts; return list of {host,port} for all displays."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
@@ -734,8 +752,9 @@ def _discover_pi(tcp_port, wait_secs=8.0):
     except OSError:
         s.close()
         print("Discovery port busy, skipping auto-discovery")
-        return None
+        return []
     s.settimeout(wait_secs)
+    found = {}  # ip -> {"host": ip, "port": port}
     deadline = time.time() + wait_secs
     try:
         while time.time() < deadline:
@@ -743,28 +762,40 @@ def _discover_pi(tcp_port, wait_secs=8.0):
                 data, addr = s.recvfrom(1024)
                 msg = json.loads(data.decode("utf-8"))
                 if msg.get("type") == "sidemon":
+                    ip = addr[0]
                     port = msg.get("port", tcp_port)
-                    print(f"Discovered SideMon Pi at {addr[0]}:{port}")
-                    return addr[0]
+                    if ip not in found:
+                        found[ip] = {"host": ip, "port": port}
+                        print(f"Discovered SideMon display at {ip}:{port}")
             except socket.timeout:
                 break
     except Exception as e:
         print(f"Discovery error: {e}")
     finally:
         s.close()
-    print("No SideMon Pi found on LAN, falling back to --host")
-    return None
+    return list(found.values())
 
-def send_payload(payload, host, port):
+def send_payload(payload, sock):
+    """Send payload over existing socket. Returns True on success."""
     try:
         js = json.dumps(payload, ensure_ascii=False) + "\n"
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(2); s.connect((host, port))
-        s.sendall(js.encode("utf-8")); s.close()
+        sock.sendall(js.encode("utf-8"))
         return True
     except:
         return False
 
+def connect_payload(host, port, timeout=5):
+    """Create a persistent TCP connection. Returns socket or None."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect((host, port))
+        return s
+    except:
+        return None
+
+
+_socks = {}
 
 class SenderService:
     def __init__(self, config, status_cb=None):
@@ -774,6 +805,8 @@ class SenderService:
         self._stop = threading.Event()
         self._enabled = threading.Event()
         self._thread = None
+        global _socks
+        _socks = {}
 
     def start(self):
         self._enabled.set()
@@ -788,6 +821,11 @@ class SenderService:
     def shutdown(self):
         self._enabled.clear()
         self._stop.set()
+        for s in _socks.values():
+            try:
+                if s: s.close()
+            except: pass
+        _socks.clear()
 
     def is_running(self):
         return self._enabled.is_set()
@@ -802,11 +840,11 @@ class SenderService:
 
     def rediscover(self, wait_secs=8.0):
         cfg = self.config()
-        ip = _discover_pi(cfg["port"], wait_secs=wait_secs)
-        if ip:
-            cfg["host"] = ip
+        found = _discover_all(wait_secs=wait_secs)
+        if found:
+            cfg["hosts"] = found
             self.update_config(cfg)
-        return ip
+        return [h["host"] for h in found]
 
     def _emit_status(self, text):
         if self._status_cb:
@@ -822,7 +860,7 @@ class SenderService:
                 time.sleep(0.2)
                 continue
             try:
-                cfg = apply_runtime_config(self.config())
+                cfg = apply_runtime_config(load_config())  # reload from disk so GUI changes take effect immediately
                 now = time.time()
                 c = psutil.net_io_counters()
                 if prev_net and prev_t:
@@ -833,12 +871,28 @@ class SenderService:
                     nr, nt = 0, 0
                 prev_net = (c.bytes_recv, c.bytes_sent); prev_t = now
 
-                payload = build_payload(cfg["pages"], default_collectors(nr, nt))
-                ok = send_payload(payload, cfg["host"], cfg["port"])
+                payload = build_payload(cfg, default_collectors(nr, nt))
+                hosts = cfg.get("hosts", [{"host": cfg.get("host", "127.0.0.1"), "port": 9877}])
+                ok_list = []
+                for h in hosts:
+                    # Maintain persistent connections per host
+                    hkey = f"{h['host']}:{h['port']}"
+                    if hkey not in _socks or not _socks[hkey]:
+                        _socks[hkey] = connect_payload(h['host'], h['port'])
+                    sock = _socks.get(hkey)
+                    if sock:
+                        ok = send_payload(payload, sock)
+                        if not ok:
+                            try: sock.close()
+                            except: pass
+                            _socks[hkey] = None
+                        ok_list.append(f"{'OK' if ok else 'ERR'}:{h['host']}")
+                    else:
+                        ok_list.append(f"ERR:{h['host']}")
                 node = payload.get("clash", {}).get("current_node", "?")[:25]
                 balance = payload.get("ccswitch", {}).get("ds_balance", "?")
                 self._emit_status(
-                    f"{'OK' if ok else 'ERR'} {cfg['host']} pages:{len(cfg.get('pages') or [])} "
+                    f"{' '.join(ok_list)} pages:{len(cfg.get('pages') or [])} "
                     f"node:{node} ds:{balance}"
                 )
                 time.sleep(cfg["interval"])
@@ -849,7 +903,7 @@ class SenderService:
 
 def build_arg_parser():
     p = argparse.ArgumentParser()
-    p.add_argument("--host", "-H")
+    p.add_argument("--host", "-H", action="append")
     p.add_argument("--port", "-P", type=int)
     p.add_argument("--interval", "-i", type=float)
     p.add_argument("--once", "-1", action="store_true")
@@ -864,8 +918,14 @@ def build_arg_parser():
 
 def config_from_args(args, base=None):
     cfg = normalize_config(base or load_config())
-    if args.host: cfg["host"] = args.host
-    if args.port: cfg["port"] = args.port
+    if args.host:
+        if isinstance(args.host, list):
+            cfg["hosts"] = [{"host": h.strip(), "port": cfg["hosts"][0]["port"] if cfg["hosts"] else 9877} for h in args.host if h.strip()]
+        else:
+            cfg["hosts"] = [{"host": str(args.host).strip(), "port": 9877}]
+    if args.port:
+        for h in cfg.get("hosts", []):
+            h["port"] = args.port
     if args.interval: cfg["interval"] = args.interval
     if args.pages: cfg["pages"] = [p.strip() for p in args.pages.split(",") if p.strip()]
     if args.ds_key is not None: cfg["deepseek_key"] = args.ds_key
@@ -880,25 +940,29 @@ def is_app_bundle():
 
 def run_cli(args):
     cfg = apply_runtime_config(config_from_args(args))
-    ip = _discover_pi(cfg["port"])
-    if ip:
-        cfg["host"] = ip
-        print(f"Discovered Pi at {ip}")
-    else:
-        try:
-            resolved = socket.getaddrinfo(cfg["host"], cfg["port"], socket.AF_INET, socket.SOCK_STREAM)[0][4][0]
-            print(f"Using --host {cfg['host']} ({resolved})")
-            cfg["host"] = resolved
-        except:
-            print(f"Can't resolve {cfg['host']}"); sys.exit(1)
+    found = _discover_all()
+    if found:
+        cfg["hosts"] = found
+        for h in found:
+            print(f"Discovered display at {h['host']}:{h['port']}")
+    elif not cfg.get("hosts"):
+        print("No displays found and no hosts configured."); sys.exit(1)
 
     if args.once:
-        payload = build_payload(cfg["pages"], default_collectors(0, 0))
-        send_payload(payload, cfg["host"], cfg["port"])
+        payload = build_payload(cfg, default_collectors(0, 0))
+        for h in cfg["hosts"]:
+            sock = connect_payload(h["host"], h["port"])
+            if sock:
+                ok = send_payload(payload, sock)
+                sock.close()
+                print(f"{'Sent to' if ok else 'ERR'} {h['host']}:{h['port']}")
+            else:
+                print(f"ERR connecting to {h['host']}:{h['port']}")
         print(json.dumps(payload, indent=2, ensure_ascii=False))
         return
 
-    print(f"SideMon → {cfg['host']}:{cfg['port']}  every {cfg['interval']}s", flush=True)
+    targets = ', '.join(f"{h['host']}:{h['port']}" for h in cfg["hosts"])
+    print(f"SideMon -> {targets}  every {cfg['interval']}s", flush=True)
     service = SenderService(cfg, status_cb=lambda text: print(text, end="\r", flush=True))
     service.start()
     try:
@@ -907,7 +971,6 @@ def run_cli(args):
     except KeyboardInterrupt:
         service.shutdown()
         print("\nDone.")
-
 
 def run_gui_app(args):
     import objc
@@ -1043,41 +1106,52 @@ def run_gui_app(args):
             mask = (NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                     NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable)
             self.window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, 520, 420), mask, NSBackingStoreBuffered, False
+                NSMakeRect(0, 0, 520, 600), mask, NSBackingStoreBuffered, False
             )
             self.window.setTitle_("RpiZeroMon Settings")
             self.window.setReleasedWhenClosed_(False)
             self.window.setDelegate_(self)
-            self.window.setMinSize_(NSMakeSize(480, 400))
+            self.window.setMinSize_(NSMakeSize(480, 580))
             self.window.center()
 
             cv = self.window.contentView()
             WW = 520
-            CH = 420  # content view height
+            CH = 600  # content view height
 
-            # Cocoa coords: y=0 at bottom, y=CH at top
-            # Helper: top-down y to Cocoa y
             def cy(top_y):
                 return CH - top_y
 
-            ty = 10  # top-down y cursor (starts 10px from top edge)
+            ty = 10  # top-down y cursor
 
             # ── Display section ──
-            self.addLabel(cv, "Display", 16, cy(ty), 100, 18, 13, True)
+            self.addLabel(cv, "Displays (up to 5)", 16, cy(ty), 200, 18, 13, True)
+            self.addButton(cv, "Find All", "rediscover:", WW - 120, cy(ty) - 3, 100)
             ty += 20
-            self.addLabel(cv, "IP", 16, cy(ty), 24)
-            self.addTextField(cv, "host", 42, cy(ty) - 2, 180)
-            self.addLabel(cv, "Port", 230, cy(ty), 36)
-            self.addTextField(cv, "port", 268, cy(ty) - 2, 56)
-            self.addLabel(cv, "Interval", 332, cy(ty), 60)
-            self.addTextField(cv, "interval", 394, cy(ty) - 2, 44)
-            self.addButton(cv, "Find", "rediscover:", WW - 60, cy(ty) - 4, 44)
+
+            # 5 IP input rows
+            for idx, ip_field_key in enumerate(["host_1", "host_2", "host_3", "host_4", "host_5"]):
+                display_no = idx + 1
+                label_y = cy(ty) + 3
+                field_y = cy(ty) - 1
+                self.addLabel(cv, f"Display {display_no}", 16, label_y, 72, 16, 11)
+                self.addTextField(cv, ip_field_key, 92, field_y, 160)
+                ty += 28
+
+            ty += 2
+
+            # Shared Port / Interval row
+            self.addLabel(cv, "Port", 16, cy(ty) + 3, 32, 16, 11)
+            self.addTextField(cv, "port", 52, cy(ty) - 1, 60)
+            self.addLabel(cv, "Interval(s)", 126, cy(ty) + 3, 72, 16, 11)
+            self.addTextField(cv, "interval", 200, cy(ty) - 1, 52)
             ty += 30
+
+            ty += 4
 
             # ── Pages section ──
             self.addLabel(cv, "Pages", 16, cy(ty), 100, 18, 13, True)
             ty += 2
-            table_h = 220
+            table_h = 200
             self.buildPageTable(cv, 16, cy(ty + table_h), WW - 32, table_h)
             ty += table_h + 8
 
@@ -1093,7 +1167,7 @@ def run_gui_app(args):
                 self.addTextField(cv, key, 120, cy(ty), 380, secure=secure)
                 ty += 24
 
-            # ── Bottom bar (fixed at bottom) ──
+            # ── Bottom bar ──
             self.status_label = self.addLabel(cv, "Sender starting...", 16, 12, 280, 18, 11)
             self.addButton(cv, "Save", "saveSettings:", WW - 172, 8, 72)
             self.addButton(cv, "Close", "closeWindow:", WW - 92, 8, 72)
@@ -1199,6 +1273,17 @@ def run_gui_app(args):
             cfg = self.config.copy()
             for key, field in self.fields.items():
                 cfg[key] = str(field.stringValue())
+            # Build hosts from all 5 IP fields
+            port = _coerce_int(cfg.get("port"), 9877)
+            new_hosts = []
+            seen = set()
+            for idx in range(1, 6):
+                key = f"host_{idx}"
+                ip = cfg.get(key, "").strip()
+                if ip and ip not in seen:
+                    new_hosts.append({"host": ip, "port": port})
+                    seen.add(ip)
+            cfg["hosts"] = new_hosts or [{"host": "192.168.1.37", "port": 9877}]
             pages = [p for p in self.page_order if p in self.page_enabled]
             if validate_pages and not pages:
                 self.alert("At least one page must be enabled.")
@@ -1222,12 +1307,20 @@ def run_gui_app(args):
             self.setStatusText_("Saved. Sender updated.")
 
         def rediscover_(self, sender):
-            cfg = self.collectConfig(validate_pages=False)
-            port = cfg["port"] if cfg else self.config["port"]
-            ip = _discover_pi(port, wait_secs=3.0)
-            if ip:
-                self.fields["host"].setStringValue_(ip)
-                self.setStatusText_(f"Found display: {ip}")
+            found = _discover_all(wait_secs=5.0)
+            if found:
+                self.config["hosts"] = found
+                # Fill primary port from first discovered
+                if found[0].get("port"):
+                    self.fields["port"].setStringValue_(str(found[0]["port"]))
+                # Fill all 5 IP fields
+                for idx in range(1, 6):
+                    key = f"host_{idx}"
+                    if idx <= len(found):
+                        self.fields[key].setStringValue_(found[idx - 1]["host"])
+                    else:
+                        self.fields[key].setStringValue_("")
+                self.setStatusText_(f"Found {len(found)} display(s)")
             else:
                 self.setStatusText_("No display found.")
 
